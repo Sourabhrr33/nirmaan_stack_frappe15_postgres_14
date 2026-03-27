@@ -117,6 +117,9 @@ import PORevisionsApprovalDetail from "@/pages/PORevision/PORevisionsApprovalDet
 import HelpRepositoryPage from "@/pages/help-repository/HelpRepositoryPage";
 const ProjectGstPage = lazy(() => import("@/pages/ProjectGst/ProjectGstPage"));
 
+// Document Search
+const DocumentSearch = lazy(() => import("@/pages/DocumentSearch/DocumentSearch"));
+
 export const appRoutes: RouteObject[] = [
   // --- Public Routes ---
   { path: "/login", element: <Login /> },
@@ -705,6 +708,11 @@ export const appRoutes: RouteObject[] = [
           // ======================================================
           // --- END: TDS APPROVAL SECTION ---
           // ======================================================
+
+          // ======================================================
+          // --- DOCUMENT SEARCH ---
+          // ======================================================
+          { path: "document-search", element: <Suspense fallback={<div>Loading...</div>}><DocumentSearch /></Suspense> },
 
         ],
       },
