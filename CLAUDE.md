@@ -114,6 +114,7 @@ nirmaan_stack/
 9. **CEO Hold authorization:** The `ceo_hold_by` field on Projects tracks who set CEO Hold. Backend validation in `integrations/controllers/projects.py` (`validate` method) restricts setting/unsetting CEO Hold to `nitesh@nirmaan.app` only — not role-based.
 10. **PO Adjustments system:** Payment reconciliation decoupled from PO Revisions. `api/po_adjustments/` module with `_payment_utils.py` (shared) and `adjustment_logic.py` (manual resolution). `PO Adjustments` doctype (POADJ-.po_id.) tracks double-entry accounting entries. `from_adjustment` flag on Project Payments skips hooks. Revision approval auto-creates/updates adjustment doc.
 11. **Vendor Credit Management:** `api/vendor_credit.py` tracks vendor credit exposure. `recalculate_vendor_credit()` called from 9 hooks (DN, payments, PO cancel/delete/merge, revision, adjustment) — updates metrics but does NOT change `vendor_status`. Daily cron (`tasks/vendor_credit_update.py`, 10 AM IST) is the sole authority for auto-setting On-Hold status. `Vendor Credit Ledger` child table on Vendors tracks all credit events.
+12. **Invoice Autofill (Document AI):** Global file auto-indexing was REMOVED. The `File` doc_event is no longer wired in `hooks.py` and `services/file_extractor.py` is deleted. Document AI is now opt-in only via the **Add Invoice → Auto-fill** flow in `frontend/src/pages/ProcurementOrders/invoices-and-dcs/components/InvoiceDialog.tsx`. Backend endpoint: `nirmaan_stack.api.invoice_autofill.extract_invoice_fields(file_url)`. Shared GCP helpers live in `services/document_ai.py` (do NOT recreate `file_extractor.py`). Settings (`Document AI Settings` singleton): `Location = asia-south1`, `Invoice Processor ID = 398ed5af98c95e0c` (custom V1-base trained on Indian invoices, F1=0.863). Confidence threshold hard-coded to 0.70 in `api/invoice_autofill.py`. Extraction response is **never persisted** — it lives only in React state until the user submits. `DocumentSearch` page is also deleted; do not re-add it. The `File Text Search Index` doctype was removed; if its DB table still exists in any environment, run patch `nirmaan_stack.patches.v3_0.drop_file_text_search_index` (NOT registered in `patches.txt`; apply manually if needed). See `.claude/context/domain/invoice-autofill.md` for full flow.
 
 ---
 
@@ -177,6 +178,7 @@ For detailed context, read these files when working on related tasks:
 | **Projects** | `.claude/context/domain/projects.md` | Status lifecycle, effects |
 | **Users** | `.claude/context/domain/users.md` | User management |
 | **Vendor Hold** | `frontend/.claude/context/domain/vendor-hold.md` | Vendor credit, hold status, PO blocking |
+| **Invoice Autofill** | `.claude/context/domain/invoice-autofill.md` | Document AI invoice prefill, V1-base custom processor, mode picker UI |
 
 **Full index:** `.claude/context/_index.md`
 
