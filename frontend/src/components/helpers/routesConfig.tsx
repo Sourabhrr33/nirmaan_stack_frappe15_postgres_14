@@ -118,8 +118,6 @@ import HelpRepositoryPage from "@/pages/help-repository/HelpRepositoryPage";
 const ProjectGstPage = lazy(() => import("@/pages/ProjectGst/ProjectGstPage"));
 
 // Document Search
-const DocumentSearch = lazy(() => import("@/pages/DocumentSearch/DocumentSearch"));
-const DocumentSearchTest = lazy(() => import("@/pages/DocumentSearch/DocumentSearchTest"));
 
 export const appRoutes: RouteObject[] = [
   // --- Public Routes ---
@@ -709,12 +707,6 @@ export const appRoutes: RouteObject[] = [
           // ======================================================
           // --- END: TDS APPROVAL SECTION ---
           // ======================================================
-
-          // ======================================================
-          // --- DOCUMENT SEARCH ---
-          // ======================================================
-          { path: "document-search", element: <Suspense fallback={<div>Loading...</div>}><DocumentSearch /></Suspense> },
-          { path: "document-search-test", element: <Suspense fallback={<div>Loading...</div>}><DocumentSearchTest /></Suspense> },
 
         ],
       },
