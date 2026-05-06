@@ -15,104 +15,70 @@ import {
   ITM_DATE_COLUMNS,
   ITM_SEARCHABLE_FIELDS,
   itmListColumns,
-  getItrListColumns,
   itmTabColumnVisibility,
   type ITMListRow,
+  type ITMListTableMeta,
 } from "./config/itmList.config";
 import { useITMList, type ITMStatusFilter } from "./hooks/useITMList";
 
 /**
- * Combined list page for ITRs (approval tabs) and ITMs (dispatch/delivery tabs).
+ * List page for Internal Transfer Memos.
  *
- * ITR tabs: Pending | Partially Fulfilled | Completed | Rejected
- * ITM tabs: Approved | Dispatched | Delivered
+ * After the ITR collapse there is no separate approval step — every ITM is
+ * born in `Approved` status by `create_itms`. Tabs reflect the dispatch /
+ * delivery lifecycle only: Approved → Dispatched → Delivered.
  *
- * ITR tabs query the "Internal Transfer Request" doctype.
- * ITM tabs query the "Internal Transfer Memo" doctype.
+ * Approved-tab rows expose a row-level Delete action (see
+ * ``ITMRowDeleteAction``) gated by ``ITM_DELETE_ROLES``; a successful
+ * delete triggers ``refetch`` via the table ``meta`` callback so the list
+ * re-renders without the deleted row.
  */
-
-type TabType = "itr" | "itm";
 
 interface TabConfig {
   value: string;
   label: string;
-  type: TabType;
   statusFilter: ITMStatusFilter;
   urlSyncKey: string;
 }
-
-const ITR_TABS: readonly TabConfig[] = [
-  {
-    value: "Pending",
-    label: "Pending Approval",
-    type: "itr",
-    statusFilter: ["has_pending_items", "true"],
-    urlSyncKey: "itr_pending",
-  },
-  {
-    value: "Rejected",
-    label: "Rejected",
-    type: "itr",
-    statusFilter: ["has_rejected_items", "true"],
-    urlSyncKey: "itr_rejected",
-  },
-  {
-    value: "All Requests",
-    label: "All Requests",
-    type: "itr",
-    statusFilter: null,
-    urlSyncKey: "itr_all",
-  },
-];
 
 const ITM_TABS: readonly TabConfig[] = [
   {
     value: "Approved",
     label: "Approved",
-    type: "itm",
     statusFilter: ["=", "Approved"],
     urlSyncKey: "itm_approved",
   },
   {
     value: "Dispatched",
     label: "Dispatched",
-    type: "itm",
     statusFilter: ["in", ["Dispatched", "Partially Delivered"]],
     urlSyncKey: "itm_dispatched",
   },
   {
     value: "Delivered",
     label: "Delivered",
-    type: "itm",
     statusFilter: ["=", "Delivered"],
     urlSyncKey: "itm_delivered",
   },
+  {
+    // Catch-all view across every status. Sits last so the lifecycle order
+    // reads left-to-right (Approved → Dispatched → Delivered → All).
+    value: "All",
+    label: "All Requests",
+    statusFilter: null,
+    urlSyncKey: "itm_all",
+  },
 ];
 
-const DECISION_TAB_ROLES: readonly string[] = [
-  "Nirmaan Admin Profile",
-  "Nirmaan PMO Executive Profile",
-];
+const DEFAULT_TAB = "Approved";
 
 export const InternalTransferMemosList: React.FC = () => {
   const { role } = useUserData();
 
-  const canViewDecisionTabs = useMemo(
-    () => DECISION_TAB_ROLES.includes(role),
-    [role]
-  );
-
-  const visibleTabs = useMemo<TabConfig[]>(
-    () => (canViewDecisionTabs ? [...ITR_TABS, ...ITM_TABS] : [...ITM_TABS]),
-    [canViewDecisionTabs]
-  );
-
-  const defaultTab = canViewDecisionTabs ? "Pending" : "Approved";
-
   const initialTab = useMemo(() => {
-    const fromUrl = getUrlStringParam("tab", defaultTab);
-    return visibleTabs.some((t) => t.value === fromUrl) ? fromUrl : defaultTab;
-  }, [defaultTab, visibleTabs]);
+    const fromUrl = getUrlStringParam("tab", DEFAULT_TAB);
+    return ITM_TABS.some((t) => t.value === fromUrl) ? fromUrl : DEFAULT_TAB;
+  }, []);
 
   const [tab, setTab] = useState(initialTab);
 
@@ -122,19 +88,15 @@ export const InternalTransferMemosList: React.FC = () => {
     }
   }, [tab]);
 
-  const visibleTabValues = useMemo(
-    () => new Set(visibleTabs.map((t) => t.value)),
-    [visibleTabs]
-  );
-
   useEffect(() => {
+    const validTabs = new Set(ITM_TABS.map((t) => t.value));
     const unsubscribe = urlStateManager.subscribe("tab", (_, value) => {
-      const newTab = (value || defaultTab);
-      if (!visibleTabValues.has(newTab)) return;
+      const newTab = value || DEFAULT_TAB;
+      if (!validTabs.has(newTab)) return;
       setTab((prev) => (prev !== newTab ? newTab : prev));
     });
     return unsubscribe;
-  }, [defaultTab, visibleTabValues]);
+  }, []);
 
   const handleTabClick = useCallback(
     (value: string) => {
@@ -148,7 +110,7 @@ export const InternalTransferMemosList: React.FC = () => {
   }
 
   const activeTabConfig =
-    visibleTabs.find((t) => t.value === tab) ?? visibleTabs[0];
+    ITM_TABS.find((t) => t.value === tab) ?? ITM_TABS[0];
 
   return (
     <div className="flex-1 space-y-4">
@@ -158,22 +120,8 @@ export const InternalTransferMemosList: React.FC = () => {
         </h1>
       </div>
 
-      {/* Tabs — ITR group | divider | ITM group */}
       <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 scrollbar-thin">
         <div className="flex gap-1.5 sm:flex-wrap pb-1 sm:pb-0">
-          {canViewDecisionTabs && (
-            <>
-              {ITR_TABS.map((t) => (
-                <TabButton
-                  key={t.value}
-                  label={t.label}
-                  isActive={tab === t.value}
-                  onClick={() => handleTabClick(t.value)}
-                />
-              ))}
-              <div className="w-px bg-gray-300 mx-1 self-stretch" />
-            </>
-          )}
           {ITM_TABS.map((t) => (
             <TabButton
               key={t.value}
@@ -214,6 +162,16 @@ interface ITMListBodyProps {
 }
 
 const ITMListBody: React.FC<ITMListBodyProps> = ({ config }) => {
+  // Forward declaration so the meta callback can call `refetch` after a
+  // successful row-level delete. The actual `refetch` reference is wired
+  // in below via `useITMList`.
+  const refetchRef = React.useRef<(() => void) | null>(null);
+
+  const meta = useMemo<ITMListTableMeta>(
+    () => ({ onItemDeleted: () => refetchRef.current?.() }),
+    []
+  );
+
   const {
     table,
     totalCount,
@@ -225,12 +183,14 @@ const ITMListBody: React.FC<ITMListBodyProps> = ({ config }) => {
     setSelectedSearchField,
     exportAllRows,
     isExporting,
+    refetch,
   } = useITMList({
     statusFilter: config.statusFilter,
     urlSyncKey: config.urlSyncKey,
-    doctype: config.type === "itr" ? "Internal Transfer Request" : "Internal Transfer Memo",
-    tabValue: config.value,
+    meta,
   });
+
+  refetchRef.current = refetch;
 
   useEffect(() => {
     const visibility = itmTabColumnVisibility[config.value] ?? {};
@@ -246,8 +206,6 @@ const ITMListBody: React.FC<ITMListBodyProps> = ({ config }) => {
     [config.value]
   );
 
-  const activeColumns = config.type === "itr" ? getItrListColumns(config.value) : itmListColumns;
-
   if (error) return <AlertDestructive error={error} />;
 
   return (
@@ -262,7 +220,7 @@ const ITMListBody: React.FC<ITMListBodyProps> = ({ config }) => {
       ) : (
         <DataTable<ITMListRow>
           table={table}
-          columns={activeColumns}
+          columns={itmListColumns}
           isLoading={isLoading}
           error={error}
           totalCount={totalCount}

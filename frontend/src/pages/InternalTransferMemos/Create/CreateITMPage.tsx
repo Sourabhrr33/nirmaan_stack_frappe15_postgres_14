@@ -119,11 +119,11 @@ export default function CreateITMPage() {
       });
       const count = result?.message?.count ?? 1;
       toast({
-        title: `${count} transfer request${count !== 1 ? "s" : ""} created`,
+        title: `${count} transfer memo${count !== 1 ? "s" : ""} created`,
         variant: "success",
       });
       setPreviewOpen(false);
-      navigate("/internal-transfer-memos?tab=Pending");
+      navigate("/internal-transfer-memos?tab=Approved");
     } catch (e: any) {
       toast({
         title: "Failed to create transfer memos",
