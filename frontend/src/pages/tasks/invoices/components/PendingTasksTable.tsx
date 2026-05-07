@@ -9,6 +9,7 @@ import { useInvoiceTaskActions } from "../hooks/useInvoiceTaskActions";
 import { getPendingTaskColumns } from "./columns";
 import { ConfirmationDialog } from "@/pages/ProcurementRequests/ApproveVendorQuotes/components/ConfirmationDialog";
 import { InvoiceRejectionDialog } from "./InvoiceRejectionDialog";
+import { InvoiceApprovalComparison } from "./InvoiceApprovalComparison";
 import { useFrappeGetDocList } from "frappe-react-sdk";
 import { NirmaanAttachment } from "@/types/NirmaanStack/NirmaanAttachment";
 import { useServerDataTable } from "@/hooks/useServerDataTable";
@@ -246,7 +247,7 @@ export const PendingTasksTable: React.FC = () => {
             )}
 
             {/* Approval Dialog */}
-            {confirmationState.action === "Approved" && (
+            {confirmationState.action === "Approved" && confirmationState.invoice && (
                 <ConfirmationDialog
                     isOpen={confirmationState.isOpen}
                     onClose={closeConfirmationDialog}
@@ -259,14 +260,29 @@ export const PendingTasksTable: React.FC = () => {
                     confirmText="Approve"
                     confirmVariant="default"
                 >
-                    <p className="text-sm text-muted-foreground text-center pt-2">
-                        Are you sure you want to{" "}
-                        <strong className="text-primary">Approve</strong> invoice{" "}
-                        <strong>
-                            {confirmationState.invoiceNo || confirmationState.invoiceId}
-                        </strong>
-                        ?
-                    </p>
+                    <InvoiceApprovalComparison
+                        invoice={confirmationState.invoice}
+                        poTotalIncGst={getTotalAmount(
+                            confirmationState.invoice.document_name,
+                            confirmationState.invoice.document_type
+                        )?.totalWithTax}
+                        paidAmount={getAmount(
+                            confirmationState.invoice.document_name,
+                            ["Paid"]
+                        )}
+                        deliveredAmount={
+                            confirmationState.invoice.document_type === "Procurement Orders"
+                                ? getDeliveredAmount(
+                                      confirmationState.invoice.document_name,
+                                      confirmationState.invoice.document_type
+                                  )
+                                : undefined
+                        }
+                        vendorDisplayName={getVendorName(
+                            confirmationState.invoice.document_name,
+                            confirmationState.invoice.document_type
+                        )}
+                    />
                 </ConfirmationDialog>
             )}
 

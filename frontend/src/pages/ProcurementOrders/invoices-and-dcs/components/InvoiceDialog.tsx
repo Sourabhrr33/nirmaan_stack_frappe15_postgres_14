@@ -36,7 +36,7 @@ import {
   useSWRConfig,
 } from "frappe-react-sdk";
 import SITEURL from "@/constants/siteURL";
-import { useCallback, useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef, useMemo } from "react";
 import { TailSpin } from "react-loader-spinner";
 import { KeyedMutator } from "swr";
 import {
@@ -120,6 +120,19 @@ export function InvoiceDialog<T extends DocumentType>({
   const [autofillAllEntities, setAutofillAllEntities] = useState<
     Array<{ type: string; value: string; confidence: number }> | null
   >(null);
+  const [autofillValidation, setAutofillValidation] = useState<{
+    applicable: boolean;
+    amount?: {
+      po_total: number;
+      existing_invoiced_sum: number;
+      new_amount: number;
+      would_be_total: number;
+      would_exceed: boolean;
+      message: string | null;
+    } | null;
+    supplier_gstin?: { extracted: string; expected: string; match: boolean | null; message: string | null } | null;
+    receiver_gstin?: { extracted: string; expected: string; match: boolean | null; message: string | null } | null;
+  } | null>(null);
 
   // API hooks
   const { call: updateInvoiceApiCall, loading: updateInvoiceApiCallLoading } =
@@ -164,6 +177,7 @@ export function InvoiceDialog<T extends DocumentType>({
       setAutofillConfidence(null);
       setAutofillExtractedValues(null);
       setAutofillAllEntities(null);
+      setAutofillValidation(null);
     }
   }, [isOpen, selectedInvoice]);
 
@@ -174,6 +188,7 @@ export function InvoiceDialog<T extends DocumentType>({
     setAutofillConfidence(null);
     setAutofillExtractedValues(null);
     setAutofillAllEntities(null);
+    setAutofillValidation(null);
   }, [selectedAttachment]);
 
   // Handle closing manually to clear selectedInvoice
@@ -324,6 +339,11 @@ export function InvoiceDialog<T extends DocumentType>({
       // purchase_order, etc.) from the recon page hover card.
       if (Array.isArray(extracted.entities)) {
         setAutofillAllEntities(extracted.entities);
+      }
+      // Capture validation results (amount overage, GSTIN matches) so the form
+      // can render warnings and block submit on hard violations.
+      if (extracted.validation) {
+        setAutofillValidation(extracted.validation);
       }
 
       if (filled.size === 0) {
@@ -549,6 +569,37 @@ export function InvoiceDialog<T extends DocumentType>({
 
   const validationState = getValidationState();
 
+  // Live amount overage check — recomputes against the current value in the
+  // amount field, so editing the value clears or re-triggers the warning.
+  // Falls back to the autofill snapshot's PO total + existing-invoiced sum.
+  const liveAmountValidation = useMemo(() => {
+    if (!autofillValidation?.applicable || !autofillValidation.amount || isEditMode) {
+      return null;
+    }
+    const poTotal = autofillValidation.amount.po_total;
+    const existing = autofillValidation.amount.existing_invoiced_sum;
+    const current = parseNumber(invoiceData.amount) || 0;
+    if (poTotal <= 0 || current <= 0) return null;
+    const wouldBeTotal = existing + current;
+    const wouldExceed = wouldBeTotal > poTotal + 0.01;
+    return {
+      poTotal,
+      existing,
+      current,
+      wouldBeTotal,
+      wouldExceed,
+    };
+  }, [autofillValidation, invoiceData.amount, isEditMode]);
+
+  const supplierGstinMismatch =
+    !isEditMode &&
+    autofillValidation?.supplier_gstin?.match === false &&
+    !!autofillValidation.supplier_gstin.message;
+  const receiverGstinMismatch =
+    !isEditMode &&
+    autofillValidation?.receiver_gstin?.match === false &&
+    !!autofillValidation.receiver_gstin.message;
+
   return (
     <>
       {/* Main Invoice Dialog */}
@@ -634,6 +685,46 @@ export function InvoiceDialog<T extends DocumentType>({
                 </span>
               </div>
             )}
+
+            {/* Hard-block banner: amount overage on PO */}
+            {liveAmountValidation?.wouldExceed && (
+              <div className="flex items-start gap-2 rounded-md bg-red-50 border border-red-300 px-3 py-2">
+                <XCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-red-900 leading-snug">
+                  <p className="font-medium">Amount exceeds PO total — submit blocked.</p>
+                  <p className="mt-0.5">
+                    Already invoiced ₹{liveAmountValidation.existing.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
+                    This invoice ₹{liveAmountValidation.current.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} would push the total to
+                    ₹{liveAmountValidation.wouldBeTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })},
+                    over the PO total of ₹{liveAmountValidation.poTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
+                  </p>
+                  <p className="mt-0.5 italic">Revise the amount before submitting.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Soft warning: supplier GSTIN mismatch */}
+            {supplierGstinMismatch && (
+              <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-300 px-3 py-2">
+                <AlertTriangle className="h-4 w-4 text-amber-700 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-900 leading-snug">
+                  <p className="font-medium">Supplier GSTIN mismatch.</p>
+                  <p className="mt-0.5">{autofillValidation?.supplier_gstin?.message}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Soft warning: receiver GSTIN mismatch */}
+            {receiverGstinMismatch && (
+              <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-300 px-3 py-2">
+                <AlertTriangle className="h-4 w-4 text-amber-700 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-900 leading-snug">
+                  <p className="font-medium">Receiver (Nirmaan) GSTIN mismatch.</p>
+                  <p className="mt-0.5">{autofillValidation?.receiver_gstin?.message}</p>
+                </div>
+              </div>
+            )}
+
             {/* Invoice Number */}
             <div className="space-y-1.5">
               <Label
@@ -854,7 +945,8 @@ export function InvoiceDialog<T extends DocumentType>({
                     (!isEditMode && !selectedAttachment) ||
                     isLoading ||
                     validationState === "error" ||
-                    validationState === "checking"
+                    validationState === "checking" ||
+                    !!liveAmountValidation?.wouldExceed
                   }
                 >
                   {isEditMode ? "Update Invoice" : "Add Invoice"}
