@@ -42,6 +42,8 @@ import {
   SchedulerMilestoneRow,
   useProjectScheduler,
 } from '../hooks/useProjectScheduler';
+import { ProgressTrackingSettingsCard } from '@/pages/projects/components/ProgressTrackingSettingsCard';
+import { EditMilestoneDatesDialog } from './EditMilestoneDatesDialog';
 
 const toInputDate = (d: Date): string => {
   const year = d.getFullYear();
@@ -119,12 +121,29 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
     isLoading,
     error,
     mutateProject,
+    refetchSchedule,
+    updateMilestoneDates,
+    resetMilestoneDates,
   } = useProjectScheduler(projectId);
 
   const { role, user_id } = useUserData();
   const canEditDates = user_id === 'Administrator' || role === 'Nirmaan Admin Profile';
 
   const { updateDoc, loading: savingDates } = useFrappeUpdateDoc();
+
+  // Edit milestone dates dialog
+  const [editDatesOpen, setEditDatesOpen] = useState(false);
+  const [editDatesRow, setEditDatesRow] = useState<SchedulerMilestoneRow | null>(null);
+
+  const openEditDates = useCallback((row: SchedulerMilestoneRow) => {
+    setEditDatesRow(row);
+    setEditDatesOpen(true);
+  }, []);
+
+  const handleSettingsAfterSave = useCallback(async () => {
+    await mutateProject();
+    await refetchSchedule();
+  }, [mutateProject, refetchSchedule]);
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -160,7 +179,10 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
         project_start_date: formatToLocalDateTimeString(start),
         project_end_date: formatToLocalDateTimeString(end),
       });
-      await mutateProject();
+      // The Projects.on_update hook recomputes Project Schedule rows for the
+      // new window — refresh both the project doc and the schedule cache so
+      // the grid reflects the recomputed dates without a page reload.
+      await Promise.all([mutateProject(), refetchSchedule()]);
       toast({
         title: 'Project dates updated',
         description: `${formatDate(start)} → ${formatDate(end)}`,
@@ -174,7 +196,7 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
         variant: 'destructive',
       });
     }
-  }, [projectId, editStart, editEnd, updateDoc, mutateProject]);
+  }, [projectId, editStart, editEnd, updateDoc, mutateProject, refetchSchedule]);
 
   const toggleHeader = (header: string) =>
     setExpanded((p) => ({ ...p, [header]: !(p[header] ?? true) }));
@@ -220,22 +242,27 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
     setDownloadingPdf(true);
     try {
       const dayMs = 1000 * 60 * 60 * 24;
+      // Drop milestones marked Disabled in the latest completed Project
+      // Progress Report — they should not appear in the DPR PDF.
       const payload = {
-        groups: groups.map((g) => ({
-          header: g.header,
-          earliest_start: g.earliestStart ? toInputDate(g.earliestStart) : null,
-          latest_end: g.latestEnd ? toInputDate(g.latestEnd) : null,
-          duration_days:
-            g.earliestStart && g.latestEnd
-              ? Math.round((g.latestEnd.getTime() - g.earliestStart.getTime()) / dayMs) + 1
-              : null,
-          milestones: g.milestones.map((m) => ({
-            name: m.work_milestone_name,
-            start_date: m.startDate ? toInputDate(m.startDate) : null,
-            end_date: m.endDate ? toInputDate(m.endDate) : null,
-            duration_days: m.firstWeekIdx !== -1 ? m.durationDays : null,
+        groups: groups
+          .map((g) => ({ ...g, milestones: g.milestones.filter((m) => !m.disabledByReport) }))
+          .filter((g) => g.milestones.length > 0)
+          .map((g) => ({
+            header: g.header,
+            earliest_start: g.earliestStart ? toInputDate(g.earliestStart) : null,
+            latest_end: g.latestEnd ? toInputDate(g.latestEnd) : null,
+            duration_days:
+              g.earliestStart && g.latestEnd
+                ? Math.round((g.latestEnd.getTime() - g.earliestStart.getTime()) / dayMs) + 1
+                : null,
+            milestones: g.milestones.map((m) => ({
+              name: m.work_milestone_name,
+              start_date: m.startDate ? toInputDate(m.startDate) : null,
+              end_date: m.endDate ? toInputDate(m.endDate) : null,
+              duration_days: m.firstWeekIdx !== -1 ? m.durationDays : null,
+            })),
           })),
-        })),
       };
 
       const res = await fetch(
@@ -396,6 +423,14 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
 
   return (
     <TooltipProvider delayDuration={120}>
+      {projectData && (
+        <ProgressTrackingSettingsCard
+          projectData={projectData as any}
+          project_mutate={mutateProject as any}
+          current_role={role}
+          onAfterSave={handleSettingsAfterSave}
+        />
+      )}
       <Card className={cn('min-w-0 overflow-hidden', className)}>
         <CardHeader className="pb-3">
           <CardTitle className="flex flex-wrap items-center justify-between gap-2 min-w-0">
@@ -560,6 +595,8 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
                     projectStartDate={projectStartDate}
                     projectDurationDays={projectDurationDays}
                     markerLeftPct={markerLeftPct}
+                    canEditDates={canEditDates}
+                    onEditDates={openEditDates}
                   />
                 ))}
               </div>
@@ -610,6 +647,20 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <EditMilestoneDatesDialog
+        open={editDatesOpen}
+        onOpenChange={setEditDatesOpen}
+        milestoneName={editDatesRow?.work_milestone_name || ''}
+        rowName={editDatesRow?.rowName || null}
+        startDate={editDatesRow?.startDate || null}
+        endDate={editDatesRow?.endDate || null}
+        changedByUser={editDatesRow?.changedByUser || false}
+        projectStartDate={projectStartDate}
+        projectEndDate={projectEndDate}
+        onSave={updateMilestoneDates}
+        onReset={resetMilestoneDates}
+      />
     </TooltipProvider>
   );
 };
@@ -674,6 +725,8 @@ interface SchedulerGroupRowProps {
   projectStartDate: Date | null;
   projectDurationDays: number;
   markerLeftPct: number | null;
+  canEditDates: boolean;
+  onEditDates: (row: SchedulerMilestoneRow) => void;
 }
 
 const SchedulerGroupRow: React.FC<SchedulerGroupRowProps> = ({
@@ -685,6 +738,8 @@ const SchedulerGroupRow: React.FC<SchedulerGroupRowProps> = ({
   projectStartDate,
   projectDurationDays,
   markerLeftPct,
+  canEditDates,
+  onEditDates,
 }) => {
   const startLabel = group.earliestStart ? formatDate(group.earliestStart) : '—';
   const endLabel = group.latestEnd ? formatDate(group.latestEnd) : '—';
@@ -762,12 +817,20 @@ const SchedulerGroupRow: React.FC<SchedulerGroupRowProps> = ({
                   className={cn(
                     'grid grid-cols-1 md:grid-cols-[minmax(260px,1fr)_140px_140px_110px] items-center border-t hover:bg-gray-50/40',
                     rowBg,
+                    m.disabledByReport && 'opacity-60',
                   )}
                 >
                   <div className="px-3 py-2 pl-6 md:pl-9 text-sm text-gray-700">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate">{m.work_milestone_name}</span>
-                      {progress !== null && m.firstWeekIdx !== -1 && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={cn('truncate', m.disabledByReport && 'line-through text-gray-500')}>
+                        {m.work_milestone_name}
+                      </span>
+                      {m.disabledByReport && (
+                        <Badge className="text-[10px] font-medium border shrink-0 bg-gray-100 text-gray-600 border-gray-300">
+                          Disabled
+                        </Badge>
+                      )}
+                      {!m.disabledByReport && progress !== null && m.firstWeekIdx !== -1 && (
                         <Badge
                           className={cn(
                             'text-[10px] font-medium border shrink-0',
@@ -780,6 +843,11 @@ const SchedulerGroupRow: React.FC<SchedulerGroupRowProps> = ({
                         >
                           {done ? '✓ 100%' : `${Math.round(progress)}%`}
                         </Badge>
+                      )}
+                      {m.changedByUser && m.editedByUser && (
+                        <span className="text-[10px] italic text-amber-700 shrink-0">
+                          Manual updated by {m.editedByUser}
+                        </span>
                       )}
                     </div>
                     {m.firstWeekIdx !== -1 && m.startDate && m.endDate && (
@@ -808,10 +876,33 @@ const SchedulerGroupRow: React.FC<SchedulerGroupRowProps> = ({
                       <span className="italic text-gray-400">—</span>
                     )}
                   </div>
-                  <div className="px-3 py-2 text-xs text-gray-600 hidden md:block">
-                    {m.firstWeekIdx !== -1
-                      ? `${m.durationDays} day${m.durationDays === 1 ? '' : 's'}`
-                      : '—'}
+                  <div className="px-3 py-2 text-xs text-gray-600 hidden md:flex items-center gap-2">
+                    <span className="flex-1 truncate">
+                      {m.firstWeekIdx !== -1
+                        ? `${m.durationDays} day${m.durationDays === 1 ? '' : 's'}`
+                        : '—'}
+                    </span>
+                    {canEditDates && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!m.disabledByReport) onEditDates(m);
+                            }}
+                            disabled={!m.rowName || m.disabledByReport}
+                            className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                            aria-label="Edit milestone dates"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="text-xs">
+                          {m.disabledByReport ? 'Milestone is disabled in the latest report' : 'Edit dates'}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                   </div>
                   {/* SLOT BAR — hidden for now
                   <div className="border-l">
