@@ -7,6 +7,10 @@ import frappe
 from frappe.model.document import Document
 from psycopg2.errors import SerializationFailure
 
+from nirmaan_stack.api.milestone.project_schedule import sync_schedules_for_header
+
+_WEEK_FIELDS = tuple(f"week_{i}" for i in range(1, 10))
+
 
 class WorkMilestones(Document):
 	# Parent fieldname -> child column on `Work Milestone Dependency`.
@@ -23,8 +27,17 @@ class WorkMilestones(Document):
 		self._validate_dependent_milestones()
 		self._validate_critical_po_dependencies()
 
+	def after_insert(self):
+		# Flow 1: a brand-new milestone needs to land in every Project Schedule
+		# whose Work Header is enabled. The reconcile inside
+		# sync_project_schedule will detect the missing row and append it
+		# with formula-derived dates against the project's window.
+		if self.work_header:
+			sync_schedules_for_header(self.work_header)
+
 	def on_update(self):
 		self._sync_dependency_denormalized_fields()
+		self._sync_project_schedules_on_week_change()
 
 	def _sync_dependency_denormalized_fields(self):
 		# Detect previous-vs-current changes on the fields that flow into
@@ -70,6 +83,18 @@ class WorkMilestones(Document):
 					)
 					return
 				time.sleep(0.05)
+
+	def _sync_project_schedules_on_week_change(self):
+		# Flow 3: if the week % anchors moved, fan out to every Project
+		# Schedule that has a row for this milestone so its formula
+		# start/end dates are recomputed. Rows flagged `changed_by_user = 1`
+		# are preserved by the reconcile function downstream — manual
+		# overrides stay frozen.
+		if not self.work_header:
+			return
+		if not any(self.has_value_changed(f) for f in _WEEK_FIELDS):
+			return
+		sync_schedules_for_header(self.work_header)
 
 	def _validate_dependent_milestones(self):
 		seen = set()

@@ -91,8 +91,9 @@ def on_update(doc, method=None):
 	# Project Schedule sync — only re-run when the project window changes, so
 	# every (non-overridden) milestone's start_date / end_date is recomputed
 	# against the new window. Manual overrides (changed_by_user = 1) stay
-	# frozen. Other Projects.on_update writes (e.g. header-set changes via
-	# the wizard) take their own paths to keep the schedule current.
+	# frozen. Header enable/disable goes through the Setup Progress Tracking
+	# wizard, which calls `ensure_project_schedule` directly, so we don't need
+	# to also trigger from on_update here.
 	if doc.has_value_changed('project_start_date') or doc.has_value_changed('project_end_date'):
 		sync_project_schedule(doc, method)
 

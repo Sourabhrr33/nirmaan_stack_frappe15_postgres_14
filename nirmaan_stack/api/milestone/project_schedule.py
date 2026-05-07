@@ -101,8 +101,19 @@ def _compute_milestone_dates(project_start, project_end, master_row):
 	if first_week_idx == -1:
 		return None, None
 
-	row_start = start + timedelta(days=round(first_week_idx * week_slot_days))
-	row_end = start + timedelta(days=round((last_week_idx + 1) * week_slot_days) - 1)
+	row_start_offset = round(first_week_idx * week_slot_days)
+	row_end_offset = round((last_week_idx + 1) * week_slot_days) - 1
+	# For projects shorter than 9 days, week_slot_days < 1, so rounding can
+	# push offsets either outside the project window or land end below start.
+	# Clamp both into the window first, then enforce end >= start so a
+	# milestone collapses to a single day rather than inverting.
+	last_offset = max(0, duration_days - 1)
+	row_start_offset = max(0, min(row_start_offset, last_offset))
+	row_end_offset = max(0, min(row_end_offset, last_offset))
+	row_end_offset = max(row_end_offset, row_start_offset)
+
+	row_start = start + timedelta(days=row_start_offset)
+	row_end = start + timedelta(days=row_end_offset)
 	return row_start, row_end
 
 
@@ -317,28 +328,73 @@ def reset_milestone_dates(project_id: str, milestone_row_name: str):
 	return sched.as_dict()
 
 
+def _projects_with_header_enabled(work_header: str) -> list:
+	"""Return Project names whose `project_work_header_entries` contains
+	`work_header` with a truthy `enabled` flag. Used by Work Milestones master
+	hooks to find which schedules need re-syncing."""
+	if not work_header:
+		return []
+	rows = frappe.db.sql(
+		"""
+		SELECT DISTINCT parent AS project_name, enabled
+		FROM "tabProject Work Headers"
+		WHERE project_work_header_name = %s
+		  AND parenttype = 'Projects'
+		""",
+		(work_header,),
+		as_dict=True,
+	)
+	return [r["project_name"] for r in rows if _truthy(r.get("enabled"))]
+
+
+def sync_schedules_for_header(work_header: str):
+	"""Fan-out helper: run `sync_project_schedule` on every Project that has
+	`work_header` enabled. Used by Work Milestones `after_insert` (a new
+	milestone needs to land in each enabled schedule) and `on_update` when
+	`week_1..week_9` change (existing schedule rows need date recompute).
+
+	Each project sync runs in a try/except so one failing project doesn't
+	break the originating master save."""
+	for project_name in _projects_with_header_enabled(work_header):
+		try:
+			project_doc = frappe.get_doc("Projects", project_name)
+			sync_project_schedule(project_doc)
+		except Exception:
+			frappe.log_error(
+				title="Project Schedule fan-out failed",
+				message=(
+					f"Could not sync Project Schedule for {project_name} "
+					f"(header={work_header}): {frappe.get_traceback()}"
+				),
+			)
+
+
 def sync_project_schedule(doc, method=None):
 	"""Projects after_insert / on_update hook. Keeps the Project Schedule in
 	sync with the project's enabled work headers + time window:
 
-	- No-op when there are no enabled `project_work_header_entries` (the
-	  schedule will be created later by the Setup Progress Tracking wizard
-	  or by lazy ensure on Schedule-tab mount once headers are enabled).
-	- If the schedule doesn't exist yet, creates and seeds it (one row per
-	  enabled-header milestone, formula dates pre-populated against the
-	  current window).
-	- If it does exist, reconciles: adds rows for newly-enabled headers'
-	  milestones, removes rows whose header was unchecked, and recomputes
-	  formula dates for non-overridden rows. Manual overrides
-	  (`changed_by_user = 1`) are preserved on surviving rows.
+	- If a Project Schedule already exists, ALWAYS reconcile — even if every
+	  header is now disabled, so disabling the last enabled header empties
+	  the schedule cleanly instead of leaving stale rows.
+	- If no schedule exists yet AND no headers are enabled, no-op (don't
+	  create an empty schedule; it'll be lazily created by
+	  `ensure_project_schedule` once the user enables a header).
+	- If no schedule exists yet AND at least one header is enabled, create
+	  and seed it (one row per enabled-header milestone, formula dates
+	  pre-populated against the current window).
+
+	Reconcile preserves `changed_by_user = 1` overrides on surviving rows;
+	rows whose header is no longer enabled are dropped (manual override or
+	not).
 
 	The project-creation flow inserts the doc first (after_insert), then
 	updates it with `project_work_header_entries` (on_update). Wiring this
 	function on both events ensures the schedule is created on whichever of
 	those two saves first carries the enabled-header set."""
-	if not _enabled_headers(doc):
+	schedule_exists = frappe.db.exists("Project Schedule", doc.name)
+	if not schedule_exists and not _enabled_headers(doc):
 		return
-	if frappe.db.exists("Project Schedule", doc.name):
+	if schedule_exists:
 		sched = frappe.get_doc("Project Schedule", doc.name)
 		_reconcile_rows(sched, doc)
 		sched.save(ignore_permissions=True)
