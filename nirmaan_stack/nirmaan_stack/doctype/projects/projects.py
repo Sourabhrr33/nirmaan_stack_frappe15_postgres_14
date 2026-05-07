@@ -10,6 +10,7 @@ from frappe.utils import flt
 from nirmaan_stack.api.milestone.project_schedule import sync_project_schedule
 
 CEO_HOLD_AUTHORIZED_USER = "nitesh@nirmaan.app"
+CEO_HOLD_SYSTEM_USER = "System (Cashflow Cron)"
 
 class Projects(Document):
 	def validate(self):
@@ -49,7 +50,14 @@ class Projects(Document):
 
 		# Changing FROM CEO Hold
 		elif old_status == "CEO Hold":
-			if frappe.session.user != old_doc.ceo_hold_by:
+			# Cron-set holds (ceo_hold_by = CEO_HOLD_SYSTEM_USER) are clearable
+			# by the authorized human, since no real user "owns" them.
+			is_cron_set_hold = old_doc.ceo_hold_by == CEO_HOLD_SYSTEM_USER
+			can_revert = (
+				frappe.session.user == old_doc.ceo_hold_by
+				or (is_cron_set_hold and frappe.session.user == CEO_HOLD_AUTHORIZED_USER)
+			)
+			if not can_revert:
 				frappe.throw(
 					"Only the user who placed this project on CEO Hold can remove it.",
 					frappe.PermissionError

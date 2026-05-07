@@ -270,7 +270,8 @@ scheduler_events = {
 	],
 	"cron": {
 		"30 4 * * *": [
-			"nirmaan_stack.tasks.vendor_credit_update.update_all_vendor_credits"
+			"nirmaan_stack.tasks.vendor_credit_update.update_all_vendor_credits",
+			"nirmaan_stack.tasks.project_cashflow_hold_update.update_projects_cashflow_hold"
 		]
 	}
 }
