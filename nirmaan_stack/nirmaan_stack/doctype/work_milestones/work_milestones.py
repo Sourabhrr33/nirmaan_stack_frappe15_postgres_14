@@ -1,14 +1,75 @@
 # Copyright (c) 2025, Nirmaan (Stratos Infra Technologies Pvt. Ltd.) and contributors
 # For license information, please see license.txt
 
+import time
+
 import frappe
 from frappe.model.document import Document
+from psycopg2.errors import SerializationFailure
 
 
 class WorkMilestones(Document):
+	# Parent fieldname -> child column on `Work Milestone Dependency`.
+	# `fetch_from` runs only at child-row save time, so changes here would
+	# leave these denormalized columns stale on every dependency row pointing
+	# at this milestone. The `on_update` hook below mirrors them.
+	# Add a new entry here whenever another field gets denormalized downstream.
+	_DEPENDENCY_DENORMALIZED_FIELDS = {
+		"work_milestone_name": "milestone_name",
+		"work_milestone_order": "dependent_milestone_order",
+	}
+
 	def validate(self):
 		self._validate_dependent_milestones()
 		self._validate_critical_po_dependencies()
+
+	def on_update(self):
+		self._sync_dependency_denormalized_fields()
+
+	def _sync_dependency_denormalized_fields(self):
+		# Detect previous-vs-current changes on the fields that flow into
+		# Work Milestone Dependency child rows; refresh only what changed.
+		changed = {
+			child_col: self.get(parent_field)
+			for parent_field, child_col in self._DEPENDENCY_DENORMALIZED_FIELDS.items()
+			if self.has_value_changed(parent_field)
+		}
+		if not changed:
+			return
+
+		set_clause = ", ".join(f"{col} = %s" for col in changed)
+		params = tuple(changed.values()) + (self.name,)
+		sql = (
+			f'UPDATE "tabWork Milestone Dependency" '
+			f'SET {set_clause} '
+			f'WHERE dependent_milestone = %s'
+		)
+
+		# Concurrent saves during a bulk milestone reorder can collide on the
+		# same `tabWork Milestone Dependency` row (Frappe's child-table write
+		# in one tx + this UPDATE in another). Wrap in a savepoint so a
+		# serialization conflict on the dependency sync doesn't fail the
+		# milestone save itself; retry once, then log and accept eventual
+		# consistency (next save of any affected milestone will re-sync).
+		for attempt in range(2):
+			save_point = f"wm_dep_sync_{attempt}"
+			try:
+				frappe.db.savepoint(save_point)
+				frappe.db.sql(sql, params)
+				frappe.db.release_savepoint(save_point)
+				return
+			except SerializationFailure:
+				frappe.db.rollback(save_point=save_point)
+				if attempt == 1:
+					frappe.log_error(
+						title="Work Milestone Dependency Sync",
+						message=(
+							f"Concurrent-update conflict syncing dependency rows "
+							f"for {self.name} after retry; will re-sync on next save."
+						),
+					)
+					return
+				time.sleep(0.05)
 
 	def _validate_dependent_milestones(self):
 		seen = set()
