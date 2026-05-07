@@ -150,8 +150,14 @@ doc_events = {
         "on_trash": "nirmaan_stack.integrations.controllers.asset_management.on_trash"
     },
     "Projects": {
-        "after_insert": "nirmaan_stack.nirmaan_stack.doctype.project_work_milestones.project_work_milestones.generate_pwm",
+        "after_insert": [
+            "nirmaan_stack.nirmaan_stack.doctype.project_work_milestones.project_work_milestones.generate_pwm",
+            "nirmaan_stack.api.milestone.project_schedule.sync_project_schedule",
+        ],
         # "on_update": "nirmaan_stack.nirmaan_stack.doctype.project_work_milestones.project_work_milestones.edit_pwm",  # Commented out - PWM doctype no longer in use
+        # `sync_project_schedule` is invoked conditionally from inside
+        # `projects.on_update` (only when the project window changes), so we
+        # don't list it as a separate doc_event here.
         "on_update": "nirmaan_stack.nirmaan_stack.doctype.projects.projects.on_update"
     },
     "Vendors": {

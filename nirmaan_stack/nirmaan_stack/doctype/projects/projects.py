@@ -7,6 +7,7 @@ from frappe.model.naming import getseries
 from datetime import datetime, timedelta
 
 from frappe.utils import flt
+from nirmaan_stack.api.milestone.project_schedule import sync_project_schedule
 
 CEO_HOLD_AUTHORIZED_USER = "nitesh@nirmaan.app"
 
@@ -86,6 +87,14 @@ def on_update(doc, method=None):
 	# Handle project_start_date change - recalculate Critical PO Task deadlines
 	if doc.has_value_changed('project_start_date') and doc.project_start_date:
 		recalculate_critical_po_deadlines(doc.name, doc.project_start_date)
+
+	# Project Schedule sync — only re-run when the project window changes, so
+	# every (non-overridden) milestone's start_date / end_date is recomputed
+	# against the new window. Manual overrides (changed_by_user = 1) stay
+	# frozen. Other Projects.on_update writes (e.g. header-set changes via
+	# the wizard) take their own paths to keep the schedule current.
+	if doc.has_value_changed('project_start_date') or doc.has_value_changed('project_end_date'):
+		sync_project_schedule(doc, method)
 
 
 def recalculate_critical_po_deadlines(project_name, project_start_date):
