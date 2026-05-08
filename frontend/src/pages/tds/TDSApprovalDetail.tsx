@@ -26,7 +26,7 @@ import {
     TooltipProvider,
     TooltipTrigger
 } from "@/components/ui/tooltip";
-import { useFrappeGetDocList, useFrappeGetDoc, useFrappeUpdateDoc, useFrappeDeleteDoc, useFrappeCreateDoc, useFrappeFileUpload } from "frappe-react-sdk";
+import { useFrappeGetDocList, useFrappeGetDoc, useFrappeUpdateDoc, useFrappeDeleteDoc, useFrappeCreateDoc, useFrappeFileUpload, useFrappePostCall } from "frappe-react-sdk";
 import { useUserData } from "@/hooks/useUserData";
 import {
     useReactTable,
@@ -102,10 +102,17 @@ const MakePill = ({ make }: { make: string }) => (
     </span>
 );
 
-// New Item Badge
+// New Item Badge — for "New" requests that link to an existing TDS Repository entry
 const NewItemBadge = () => (
     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 uppercase tracking-tight mb-1">
         New Item
+    </span>
+);
+
+// Custom Item Badge — for project-only customs (no tds_item_id, no master entry)
+const CustomItemBadge = () => (
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 uppercase tracking-tight mb-1">
+        Custom Item
     </span>
 );
 
@@ -475,15 +482,36 @@ export const TDSApprovalDetail: React.FC = () => {
         make: string;
         work_package: string;
         category: string;
+        status?: string;
     };
     const { data: repoEntries, mutate: mutateRepo } = useFrappeGetDocList<RepoEntry>("TDS Repository", {
-        fields: ["name", "tds_item_id", "tds_item_name", "make", "work_package", "category"],
+        fields: ["name", "tds_item_id", "tds_item_name", "make", "work_package", "category", "status"],
         limit: 0,
     });
+
+    // Lookup of TDS Repository status keyed by (wp|cat|name|make) — same shape we
+    // already use for findExistingRepoEntry. Used by the Pending Review row to
+    // render the master's "Verified" / "Not Verified" badge inline.
+    const repoStatusByKey = useMemo(() => {
+        const map = new Map<string, string>();
+        if (!repoEntries) return map;
+        repoEntries.forEach(r => {
+            const key = `${r.work_package}|${r.category}|${(r.tds_item_name || "").trim().toLowerCase()}|${(r.make || "").trim().toLowerCase()}`;
+            if (r.status) map.set(key, r.status);
+        });
+        return map;
+    }, [repoEntries]);
 
     // CEO Hold guard - use project ID from first TDS item
     const projectId = allItems?.[0]?.tdsi_project_id;
     const { isCEOHold } = useCEOHoldGuard(projectId);
+
+    // PCUS allocator — backend is the single source of truth. Calling this at
+    // approval click time avoids SWR cache staleness across TDS request pages,
+    // which was causing id collisions (e.g. PCUS-000001 stamped twice).
+    const { call: allocatePcusIds } = useFrappePostCall(
+        "nirmaan_stack.api.tds.allocate_pcus.allocate_pcus_ids"
+    );
 
     // Filter state (shared across Pending / Approved / Rejected sections)
     const [selectedWorkPackages, setSelectedWorkPackages] = useState<string[]>([]);
@@ -729,12 +757,29 @@ export const TDSApprovalDetail: React.FC = () => {
             {
                 accessorKey: "tds_item_name",
                 header: "Item Name",
-                cell: ({ row }) => (
-                    <div className="flex flex-col items-start whitespace-normal break-words">
-                        {row.original.tds_status === "New" && <NewItemBadge />}
-                        <span>{row.getValue("tds_item_name")}</span>
-                    </div>
-                ),
+                cell: ({ row }) => {
+                    const isNewCustom = row.original.tds_status === "New" && !row.original.tds_item_id;
+                    const key = `${row.original.tds_work_package}|${row.original.tds_category}|${(row.original.tds_item_name || "").trim().toLowerCase()}|${(row.original.tds_make || "").trim().toLowerCase()}`;
+                    const repoStatus = isNewCustom ? undefined : repoStatusByKey.get(key);
+                    return (
+                        <div className="flex flex-col items-start gap-1 whitespace-normal break-words">
+                            {isNewCustom
+                                ? <CustomItemBadge />
+                                : (row.original.tds_status === "New" && <NewItemBadge />)}
+                            {repoStatus && (
+                                <span
+                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight ${repoStatus === "Verified"
+                                        ? "bg-emerald-100 text-emerald-700"
+                                        : "bg-rose-100 text-rose-700"
+                                        }`}
+                                >
+                                    {repoStatus}
+                                </span>
+                            )}
+                            <span>{row.getValue("tds_item_name")}</span>
+                        </div>
+                    );
+                },
                 size: 180,
             },
             {
@@ -837,7 +882,7 @@ export const TDSApprovalDetail: React.FC = () => {
         }
 
         return cols;
-    }, [rowSelection, canApprove, facetOptions, selectedWorkPackages, selectedCategories, selectedMakes]);
+    }, [rowSelection, canApprove, facetOptions, selectedWorkPackages, selectedCategories, selectedMakes, repoStatusByKey]);
 
     // Read-only columns for Approved/Rejected sections
     const readOnlyColumns = useMemo<ColumnDef<TDSItem>[]>(() => [
@@ -1116,20 +1161,68 @@ export const TDSApprovalDetail: React.FC = () => {
         setProcessing(true);
         let createdCount = 0;
         let reusedCount = 0;
+        let projectOnlyCount = 0;
+
+        // Pre-allocate PCUS ids from the backend for every project-only custom in this
+        // batch. Single round-trip; backend reads the project's current max from the DB
+        // so we never collide with a previously-stamped id (the cached SWR value was
+        // unreliable across navigation between request pages).
+        const projectOnlyDocs = selectedItems.filter(
+            d => d.tds_status === "New" && !d.tds_item_id
+        );
+        let pcusIds: string[] = [];
+        if (projectOnlyDocs.length > 0) {
+            if (!projectId) {
+                toast({ title: "Error", description: "Project id missing — cannot allocate PCUS ids.", variant: "destructive" });
+                setProcessing(false);
+                return;
+            }
+            const resp = await allocatePcusIds({ project_id: projectId, count: projectOnlyDocs.length });
+            pcusIds = (resp?.message as string[]) || [];
+            if (pcusIds.length !== projectOnlyDocs.length) {
+                toast({ title: "Error", description: "Failed to allocate PCUS ids.", variant: "destructive" });
+                setProcessing(false);
+                return;
+            }
+        }
+        // Map Project TDS Item List doc name → pre-allocated PCUS id, consumed inside the loop.
+        const pcusByDocName = new Map<string, string>();
+        projectOnlyDocs.forEach((d, i) => pcusByDocName.set(d.name, pcusIds[i]));
         try {
+            // Helper: flip a TDS Repository entry to "Verified" if it isn't already.
+            // Approving an item is the act of vetting it, so the master gets verified.
+            const verifyRepo = async (repoName: string, currentStatus?: string) => {
+                if (currentStatus === "Verified") return;
+                await updateDoc("TDS Repository", repoName, { status: "Verified" });
+            };
+
             await Promise.all(selectedItems.map(async (doc) => {
                 if (doc.tds_status === "New") {
+                    // Project-only custom item: brand-new request with no source id.
+                    // Stays in Project TDS Item List under this project; no TDS Repository entry.
+                    // Pre-allocated PCUS id (from backend) is consumed here.
+                    if (!doc.tds_item_id) {
+                        const pcusId = pcusByDocName.get(doc.name)!;
+                        projectOnlyCount++;
+                        return updateDoc("Project TDS Item List", doc.name, {
+                            tds_status: "Approved",
+                            tds_item_id: pcusId,
+                        });
+                    }
+
                     // Preflight: if an entry already exists in the repo, link to it instead
                     const existing = findExistingRepoEntry(doc);
                     if (existing) {
                         reusedCount++;
+                        await verifyRepo(existing.name, existing.status);
                         return updateDoc("Project TDS Item List", doc.name, {
                             tds_status: "Approved",
-                            tds_item_id: existing.name,
+                            tds_item_id: existing.tds_item_id,
                         });
                     }
 
-                    // No preflight match — try to create a new repo entry
+                    // No preflight match — create a new repo entry, born "Verified" since an approver
+                    // just signed off on it.
                     const repoPayload: Record<string, any> = {
                         tds_item_name: doc.tds_item_name,
                         make: doc.tds_make,
@@ -1137,6 +1230,7 @@ export const TDSApprovalDetail: React.FC = () => {
                         work_package: doc.tds_work_package,
                         category: doc.tds_category,
                         tds_attachment: doc.tds_attachment,
+                        status: "Verified",
                     };
                     if (doc.tds_item_id) {
                         repoPayload.tds_item_id = doc.tds_item_id;
@@ -1147,7 +1241,7 @@ export const TDSApprovalDetail: React.FC = () => {
                         createdCount++;
                         return updateDoc("Project TDS Item List", doc.name, {
                             tds_status: "Approved",
-                            tds_item_id: repoItem.name,
+                            tds_item_id: repoItem.tds_item_id,
                         });
                     } catch (createErr) {
                         // Race case: another user created the same (wp, cat, tds_item_id, make)
@@ -1162,40 +1256,48 @@ export const TDSApprovalDetail: React.FC = () => {
                         );
                         if (fallbackMatch) {
                             reusedCount++;
+                            await verifyRepo(fallbackMatch.name, fallbackMatch.status);
                             return updateDoc("Project TDS Item List", doc.name, {
                                 tds_status: "Approved",
-                                tds_item_id: fallbackMatch.name,
+                                tds_item_id: fallbackMatch.tds_item_id,
                             });
                         }
                         throw createErr;
                     }
                 } else {
+                    // "Pending" — already-existing item picked from the master. Find the master
+                    // entry and verify it. Match by (tds_item_id Data field + wp + cat + make)
+                    // since that's the uniqueness key in the TDS Repository validate hook.
+                    const master = repoEntries?.find(r =>
+                        r.tds_item_id === doc.tds_item_id &&
+                        r.make === doc.tds_make &&
+                        r.work_package === doc.tds_work_package &&
+                        r.category === doc.tds_category
+                    );
+                    if (master) {
+                        await verifyRepo(master.name, master.status);
+                    }
                     return updateDoc("Project TDS Item List", doc.name, { tds_status: "Approved" });
                 }
             }));
 
             const total = selectedItems.length;
-            if (reusedCount > 0 && createdCount > 0) {
-                toast({
-                    title: "Approved",
-                    description: `${total} items approved — ${createdCount} added to TDS Repository, ${reusedCount} linked to existing entries.`,
-                    variant: "success",
-                });
-            } else if (reusedCount > 0) {
-                toast({
-                    title: "Approved (linked to existing)",
-                    description: `${reusedCount === 1 ? "This item was" : `${reusedCount} items were`} already in the TDS Repository — approved and linked to the existing ${reusedCount === 1 ? "entry" : "entries"}.`,
-                    variant: "success",
-                });
-            } else {
-                toast({ title: "Approved", description: `${total} items approved`, variant: "success" });
-            }
+            const parts: string[] = [];
+            if (createdCount > 0) parts.push(`${createdCount} added to TDS Repository`);
+            if (reusedCount > 0) parts.push(`${reusedCount} linked to existing entries`);
+            if (projectOnlyCount > 0) parts.push(`${projectOnlyCount} kept as project-only custom`);
+            toast({
+                title: "Approved",
+                description: parts.length > 0 ? `${total} items approved — ${parts.join(", ")}.` : `${total} items approved`,
+                variant: "success",
+            });
 
             if (willBeEmpty) {
                 navigate("/tds-approval");
             } else {
                 setRowSelection({});
                 mutate();
+                mutateRepo();
             }
         } catch (e) {
             console.error(e);

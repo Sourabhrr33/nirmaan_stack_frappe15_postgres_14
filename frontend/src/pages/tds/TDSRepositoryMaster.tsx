@@ -50,7 +50,7 @@ const TDSDataTableWrapper: React.FC<{
     } = useServerDataTable<TDSItem>({
         doctype,
         columns,
-        fetchFields: ["name", "work_package", "category", "tds_item_id", "tds_item_name", "description", "make", "tds_attachment", "creation"],
+        fetchFields: ["name", "work_package", "category", "tds_item_id", "tds_item_name", "description", "make", "tds_attachment", "creation", "status"],
         defaultSort: "creation desc",
         searchableFields: searchableFields,
         urlSyncKey: "tds_repository_master", // Enable URL sync
@@ -136,7 +136,7 @@ export const TDSRepositoryMaster: React.FC = () => {
 
     // isPermission = true only for Admin and Estimates Executive
     const isPermission = ["Nirmaan Admin Profile", "Nirmaan Estimates Executive Profile",
-    "Nirmaan PMO Executive Profile",].includes(role);
+        "Nirmaan PMO Executive Profile",].includes(role);
 
     //  console.log("role",isPermission,role)
 
@@ -169,16 +169,17 @@ export const TDSRepositoryMaster: React.FC = () => {
     const columns = useMemo<ColumnDef<TDSItem>[]>(() => [
         {
             accessorKey: "tds_item_id",
+            size: 120,
             header: ({ column }: { column: any }) => <DataTableColumnHeader column={column} title="Item ID" />,
             cell: ({ row }: { row: any }) => <div className="font-medium">{row.getValue("tds_item_id")}</div>,
-            enableColumnFilter: true, 
+            enableColumnFilter: true,
         },
         {
             accessorKey: "work_package",
             header: ({ column }: { column: any }) => <DataTableColumnHeader column={column} title="Work Package" />,
             cell: ({ row }: { row: any }) => <div className="font-medium mx-auto">{row.getValue("work_package")}</div>,
             enableColumnFilter: true,
-            filterFn: "arrIncludesSome" as any, 
+            filterFn: "arrIncludesSome" as any,
             meta: { enableFacet: true, facetTitle: "Work Package" }
         },
         {
@@ -190,7 +191,7 @@ export const TDSRepositoryMaster: React.FC = () => {
             meta: { enableFacet: true, facetTitle: "Category" }
         },
         {
-             accessorKey: "tds_item_name",
+            accessorKey: "tds_item_name",
             header: ({ column }: { column: any }) => <DataTableColumnHeader column={column} title="Item Name" />,
             cell: ({ row }: { row: any }) => <div className="font-medium">{row.getValue("tds_item_name")}</div>,
             enableColumnFilter: true,
@@ -215,12 +216,32 @@ export const TDSRepositoryMaster: React.FC = () => {
             meta: { enableFacet: true, facetTitle: "Make" }
         },
         {
+            accessorKey: "status",
+            size: 80,
+            header: ({ column }: { column: any }) => <DataTableColumnHeader column={column} title="Status" />,
+            cell: ({ row }: { row: any }) => {
+                const status = (row.getValue("status") as string) || "Not Verified";
+                const isVerified = status === "Verified";
+                const cls = isVerified
+                    ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20"
+                    : "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-600/20";
+                return (
+                    <div className="flex justify-center">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${cls}`}>
+                            {status}
+                        </span>
+                    </div>
+                );
+            },
+        },
+        {
             accessorKey: "tds_attachment",
+            size: 60,
             header: ({ column }: { column: any }) => <DataTableColumnHeader column={column} title="Doc" />,
             cell: ({ row }: { row: any }) => {
                 const docUrl = row.getValue("tds_attachment") as string;
                 const fileName = docUrl ? docUrl.split("/").pop() : "";
-                
+
                 return (
                     <div className="flex justify-start">
                         <Button
@@ -240,6 +261,7 @@ export const TDSRepositoryMaster: React.FC = () => {
         ...(isPermission ? [
             {
                 id: "actions",
+                size: 90,
                 meta: { excludeFromExport: true }, // Exclude from export
                 header: ({ column }: { column: any }) => <DataTableColumnHeader column={column} title="Actions" />,
                 cell: ({ row }: { row: any }) => (
@@ -274,7 +296,7 @@ export const TDSRepositoryMaster: React.FC = () => {
     ], [isPermission]);
 
     const searchableFields = [
-        { label: "Item Name", value: "tds_item_name" }, 
+        { label: "Item Name", value: "tds_item_name" },
         { label: "Description", value: "description" },
         { label: "Make", value: "make" }
     ];
@@ -297,7 +319,7 @@ export const TDSRepositoryMaster: React.FC = () => {
 
             <Separator />
 
-            <TDSDataTableWrapper 
+            <TDSDataTableWrapper
                 doctype={doctype}
                 columns={columns}
                 searchableFields={searchableFields}
@@ -309,11 +331,11 @@ export const TDSRepositoryMaster: React.FC = () => {
                 refetchRef={tableRefetchRef}
             />
 
-            <EditTDSItemDialog 
-                open={isEditOpen} 
-                onOpenChange={setIsEditOpen} 
-                item={editItem} 
-                onSuccess={handleEditSuccess} 
+            <EditTDSItemDialog
+                open={isEditOpen}
+                onOpenChange={setIsEditOpen}
+                item={editItem}
+                onSuccess={handleEditSuccess}
             />
 
             <AlertDialog open={!!deleteItem} onOpenChange={(open) => !open && setDeleteItem(null)}>

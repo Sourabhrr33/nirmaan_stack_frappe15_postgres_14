@@ -11,6 +11,7 @@ export interface TDSItem {
     make: string;
     tds_attachment: string;
     creation: string;
+    status?: string;
 }
 
 export const tdsItemSchema = z.object({

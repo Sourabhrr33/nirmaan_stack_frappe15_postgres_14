@@ -87,7 +87,7 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
         itemOptionsForWP.forEach(item => {
             nameCounts.set(item.label, (nameCounts.get(item.label) || 0) + 1);
         });
-        return itemOptionsForWP.map(item => ({
+        const standardItems = itemOptionsForWP.map(item => ({
             label: item.label,
             value: item.value,
             category: item.category,
@@ -95,6 +95,10 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
             // Used by formatOptionLabel to render the category in blue only when the name collides.
             showCategory: (nameCounts.get(item.label) || 0) > 1,
         }));
+        return [
+            ...standardItems,
+            { label: "+ Custom Item", value: "__custom__", category: "", categoryName: "", showCategory: false },
+        ];
     }, [itemOptionsForWP]);
 
     const prevWPRef = useRef(selectedWP);
@@ -123,6 +127,10 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
     }, [watchedTdsItemId, form]);
 
     const handleItemChange = (opt: any) => {
+        if (opt?.value === "__custom__") {
+            setCustomItemDialogOpen(true);
+            return;
+        }
         const isCustom = opt?.value?.startsWith("CUS-");
         const itemInfo = getCategoryForItem(opt?.value);
 
@@ -275,12 +283,16 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
                                                     classNamePrefix="react-select"
                                                     isDisabled={!selectedWP}
                                                     formatOptionLabel={(option: any) => (
-                                                        <span>
-                                                            {option.label}
-                                                            {option.showCategory && option.categoryName && (
-                                                                <span className="text-blue-600 ml-1">({option.categoryName})</span>
-                                                            )}
-                                                        </span>
+                                                        option.value === "__custom__" ? (
+                                                            <span className="text-blue-600 font-medium">+ Custom Item</span>
+                                                        ) : (
+                                                            <span>
+                                                                {option.label}
+                                                                {option.showCategory && option.categoryName && (
+                                                                    <span className="text-blue-600 ml-1">({option.categoryName})</span>
+                                                                )}
+                                                            </span>
+                                                        )
                                                     )}
                                                     styles={{
                                                         control: (base) => ({ ...base, minHeight: '44px', borderRadius: '8px', borderColor: '#e5e7eb' })
@@ -458,6 +470,7 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
                 allCustomItems={allCustomItems}
                 standardItems={itemOptionsForWP}
                 catList={catList || []}
+                hideMatches
             />
         </Dialog>
     );

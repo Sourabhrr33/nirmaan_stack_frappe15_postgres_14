@@ -34,10 +34,16 @@ export interface CustomItemDialogProps {
     allCustomItems: Array<{ id: string; name: string; wp: string; cat: string }>;
     standardItems: Array<{ label: string; value: string; category?: string; categoryName?: string }>;
     catList: any[];
+    // When true, hides the "Matching Custom" and "Matching Standard" suggestion lists
+    // and shows only the search field + "Create New Custom" action. Used by the
+    // project-side request dialog where reusing existing items is intentionally
+    // blocked — the user is creating a project-only custom and shouldn't be nudged
+    // toward the master.
+    hideMatches?: boolean;
 }
 
-export const CustomItemDialog: React.FC<CustomItemDialogProps> = ({ 
-    open, onClose, onSelect, allCustomItems, standardItems, catList 
+export const CustomItemDialog: React.FC<CustomItemDialogProps> = ({
+    open, onClose, onSelect, allCustomItems, standardItems, catList, hideMatches = false
 }) => {
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -111,47 +117,49 @@ export const CustomItemDialog: React.FC<CustomItemDialogProps> = ({
                         />
                     </div>
 
-                    <div className="max-h-[250px] overflow-y-auto space-y-3">
-                        {/* Matching Custom Items */}
-                        {matchingCustom.length > 0 && (
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 mb-1">── Matching Custom ──</p>
-                                {matchingCustom.map(item => (
-                                    <button
-                                        key={item.id}
-                                        onClick={() => handleSelectCustom(item)}
-                                        className="w-full text-left p-3 bg-yellow-50 border border-yellow-200 hover:bg-yellow-100 rounded-md text-sm flex items-center justify-between transition-colors mb-2"
-                                    >
-                                        <div className="flex flex-col">
-                                            <span className="font-semibold text-yellow-800">[{item.id}] {item.name}</span>
-                                            <span className="text-xs text-yellow-600 mt-1">{item.wp} → {item.cat}</span>
-                                        </div>
-                                        <PlusCircle className="h-5 w-5 text-red-500 drop-shadow-sm hover:text-red-600 transition-transform hover:scale-105" />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
+                    {!hideMatches && (
+                        <div className="max-h-[250px] overflow-y-auto space-y-3">
+                            {/* Matching Custom Items */}
+                            {matchingCustom.length > 0 && (
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-500 mb-1">── Matching Custom ──</p>
+                                    {matchingCustom.map(item => (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => handleSelectCustom(item)}
+                                            className="w-full text-left p-3 bg-yellow-50 border border-yellow-200 hover:bg-yellow-100 rounded-md text-sm flex items-center justify-between transition-colors mb-2"
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className="font-semibold text-yellow-800">[{item.id}] {item.name}</span>
+                                                <span className="text-xs text-yellow-600 mt-1">{item.wp} → {item.cat}</span>
+                                            </div>
+                                            <PlusCircle className="h-5 w-5 text-red-500 drop-shadow-sm hover:text-red-600 transition-transform hover:scale-105" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
 
-                        {/* Matching Standard Items */}
-                        {matchingStandard.length > 0 && (
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 mb-1">── Matching Standard ──</p>
-                                {matchingStandard.map(item => (
-                                    <button
-                                        key={item.value}
-                                        onClick={() => handleSelectStandard(item)}
-                                        className="w-full text-left p-3 bg-green-50 border border-green-200 hover:bg-green-100 rounded-md text-sm flex items-center justify-between transition-colors mb-2"
-                                    >
-                                        <div className="flex flex-col">
-                                            <span className="font-semibold text-green-800">{item.label}</span>
-                                            <span className="text-xs text-green-600 mt-1">({item.categoryName})</span>
-                                        </div>
-                                        <PlusCircle className="h-5 w-5 text-red-500 drop-shadow-sm hover:text-red-600 transition-transform hover:scale-105" />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                            {/* Matching Standard Items */}
+                            {matchingStandard.length > 0 && (
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-500 mb-1">── Matching Standard ──</p>
+                                    {matchingStandard.map(item => (
+                                        <button
+                                            key={item.value}
+                                            onClick={() => handleSelectStandard(item)}
+                                            className="w-full text-left p-3 bg-green-50 border border-green-200 hover:bg-green-100 rounded-md text-sm flex items-center justify-between transition-colors mb-2"
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className="font-semibold text-green-800">{item.label}</span>
+                                                <span className="text-xs text-green-600 mt-1">({item.categoryName})</span>
+                                            </div>
+                                            <PlusCircle className="h-5 w-5 text-red-500 drop-shadow-sm hover:text-red-600 transition-transform hover:scale-105" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div className="flex justify-end gap-2 pt-2 border-t">
                         <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
