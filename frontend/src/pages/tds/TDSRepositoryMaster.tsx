@@ -95,13 +95,22 @@ const TDSDataTableWrapper: React.FC<{
         selectedSearchField,
     });
 
+    const { facetOptions: statusFacetOptions, isLoading: isStatusLoading } = useFacetValues({
+        doctype,
+        field: "status",
+        currentFilters: columnFilters,
+        searchTerm,
+        selectedSearchField,
+    });
+
     // Combined Facet Options
     const facetFilterOptions = useMemo(() => ({
         work_package: { title: "Work Package", options: wpFacetOptions, isLoading: isWPLoading },
         category: { title: "Category", options: catFacetOptions, isLoading: isCatLoading },
         tds_item_name: { title: "Item Name", options: itemFacetOptions, isLoading: isItemLoading },
         make: { title: "Make", options: makeFacetOptions, isLoading: isMakeLoading },
-    }), [wpFacetOptions, isWPLoading, catFacetOptions, isCatLoading, itemFacetOptions, isItemLoading, makeFacetOptions, isMakeLoading]);
+        status: { title: "Status", options: statusFacetOptions, isLoading: isStatusLoading },
+    }), [wpFacetOptions, isWPLoading, catFacetOptions, isCatLoading, itemFacetOptions, isItemLoading, makeFacetOptions, isMakeLoading, statusFacetOptions, isStatusLoading]);
 
 
     return (
@@ -233,6 +242,9 @@ export const TDSRepositoryMaster: React.FC = () => {
                     </div>
                 );
             },
+            enableColumnFilter: true,
+            filterFn: "arrIncludesSome" as any,
+            meta: { enableFacet: true, facetTitle: "Status" }
         },
         {
             accessorKey: "tds_attachment",
@@ -297,6 +309,7 @@ export const TDSRepositoryMaster: React.FC = () => {
 
     const searchableFields = [
         { label: "Item Name", value: "tds_item_name" },
+        { label: "Item ID", value: "tds_item_id" },
         { label: "Description", value: "description" },
         { label: "Make", value: "make" }
     ];
