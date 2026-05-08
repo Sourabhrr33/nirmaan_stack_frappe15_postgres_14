@@ -19,7 +19,10 @@
   "week_6",
   "week_7",
   "week_8",
-  "week_9"
+  "week_9",
+  "dependencies_section",
+  "dependent_milestones",
+  "critical_po_dependencies"
  ],
  "fields": [
   {
@@ -103,6 +106,24 @@
    "fieldname": "week_9",
    "fieldtype": "Int",
    "label": "Week 9"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "dependencies_section",
+   "fieldtype": "Section Break",
+   "label": "Dependencies"
+  },
+  {
+   "fieldname": "dependent_milestones",
+   "fieldtype": "Table",
+   "label": "Dependent Milestones",
+   "options": "Work Milestone Dependency"
+  },
+  {
+   "fieldname": "critical_po_dependencies",
+   "fieldtype": "Table",
+   "label": "Critical PO Dependencies",
+   "options": "Work Milestone Critical PO Dependency"
   }
  ],
  "grid_page_length": 50,
