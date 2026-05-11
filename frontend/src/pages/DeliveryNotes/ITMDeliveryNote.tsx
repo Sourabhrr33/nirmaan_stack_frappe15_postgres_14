@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import { toast } from "@/components/ui/use-toast";
 
+import { useUserData } from "@/hooks/useUserData";
 import { formatDate } from "@/utils/FormatDate";
 import { decodeFrappeId } from "./constants";
 import { ITMDeliveryMetadataBar } from "./components/ITMDeliveryMetadataBar";
@@ -71,6 +72,11 @@ const ITMDeliveryNote: React.FC = () => {
   const [searchParams] = useSearchParams();
   const viewMode =
     searchParams.get("mode") === "create" ? "create" : "view";
+
+  const userData = useUserData();
+  const isProjectManager =
+    userData?.role === "Nirmaan Project Manager Profile";
+  const hideTotalReceived = isProjectManager && viewMode === "create";
 
   // In "create" mode the input row is auto-open. In "view" it stays
   // closed until the user clicks "Add New Delivery Note" — same pattern
@@ -354,9 +360,11 @@ const ITMDeliveryNote: React.FC = () => {
                 <TableHead className="text-center text-xs font-medium uppercase tracking-wider text-muted-foreground w-[60px]">
                   Unit
                 </TableHead>
-                <TableHead className="text-right text-xs font-medium uppercase tracking-wider text-muted-foreground w-[100px]">
-                  Transfer Qty
-                </TableHead>
+                {!isProjectManager && (
+                  <TableHead className="text-right text-xs font-medium uppercase tracking-wider text-muted-foreground w-[100px]">
+                    Transfer Qty
+                  </TableHead>
+                )}
                 {dns.map((dn, idx) => {
                   const updatedBy = dn.updated_by_user || dn.owner;
                   const displayName = updatedBy
@@ -392,9 +400,11 @@ const ITMDeliveryNote: React.FC = () => {
                     New Entry
                   </TableHead>
                 )}
-                <TableHead className="text-right text-xs font-medium uppercase tracking-wider text-muted-foreground min-w-[100px]">
-                  Total Received
-                </TableHead>
+                {!hideTotalReceived && (
+                  <TableHead className="text-right text-xs font-medium uppercase tracking-wider text-muted-foreground min-w-[100px]">
+                    Total Received
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -421,9 +431,11 @@ const ITMDeliveryNote: React.FC = () => {
                     <TableCell className="text-center text-sm text-muted-foreground">
                       {row.unit}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums text-sm font-medium">
-                      {row.transfer_quantity}
-                    </TableCell>
+                    {!isProjectManager && (
+                      <TableCell className="text-right tabular-nums text-sm font-medium">
+                        {row.transfer_quantity}
+                      </TableCell>
+                    )}
                     {dns.map((dn) => {
                       const qty = row.dnQuantities[dn.name] || 0;
                       return (
@@ -456,19 +468,21 @@ const ITMDeliveryNote: React.FC = () => {
                         />
                       </TableCell>
                     )}
-                    <TableCell className="text-right tabular-nums text-sm font-medium">
-                      <span
-                        className={
-                          row.total_received >= row.transfer_quantity
-                            ? "text-green-600 font-medium"
-                            : row.total_received > 0
-                              ? "text-orange-600 font-medium"
-                              : "text-red-500"
-                        }
-                      >
-                        {row.total_received}
-                      </span>
-                    </TableCell>
+                    {!hideTotalReceived && (
+                      <TableCell className="text-right tabular-nums text-sm font-medium">
+                        <span
+                          className={
+                            row.total_received >= row.transfer_quantity
+                              ? "text-green-600 font-medium"
+                              : row.total_received > 0
+                                ? "text-orange-600 font-medium"
+                                : "text-red-500"
+                          }
+                        >
+                          {row.total_received}
+                        </span>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
