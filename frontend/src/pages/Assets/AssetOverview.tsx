@@ -60,6 +60,8 @@ import {
     AlertTriangle,
     Upload,
     Download,
+    Briefcase,
+    Laptop,
 } from 'lucide-react';
 
 import { AssignAssetDialog } from './components/AssignAssetDialog';
@@ -71,6 +73,7 @@ import {
     ASSET_MANAGEMENT_DOCTYPE,
     ASSET_CONDITION_OPTIONS,
     ASSET_CACHE_KEYS,
+    AssetCategoryType,
 } from './assets.constants';
 import { getAssetPermissions } from './utils/permissions';
 
@@ -110,6 +113,16 @@ const conditionColorMap: Record<string, string> = {
     'Fair': 'bg-amber-50 text-amber-700 border-amber-200',
     'Poor': 'bg-orange-50 text-orange-700 border-orange-200',
     'Damaged': 'bg-red-50 text-red-700 border-red-200',
+};
+
+const categoryTypeBadgeClass: Record<AssetCategoryType, string> = {
+    Project: 'bg-blue-50 text-blue-700 border-blue-200',
+    IT: 'bg-purple-50 text-purple-700 border-purple-200',
+};
+
+const categoryTypeIconMap: Record<AssetCategoryType, React.ReactNode> = {
+    Project: <Briefcase className="h-3 w-3 mr-1" />,
+    IT: <Laptop className="h-3 w-3 mr-1" />,
 };
 
 const AssetOverview: React.FC = () => {
@@ -234,7 +247,7 @@ const AssetOverviewContent: React.FC<{ assetId: string }> = ({ assetId }) => {
     const { data: categoryList } = useFrappeGetDocList(
         ASSET_CATEGORY_DOCTYPE,
         {
-            fields: ['name', 'asset_category'],
+            fields: ['name', 'asset_category', 'category_type'],
             orderBy: { field: 'asset_category', order: 'asc' },
             limit: 0,
         },
@@ -248,6 +261,13 @@ const AssetOverviewContent: React.FC<{ assetId: string }> = ({ assetId }) => {
         })) || [],
         [categoryList]
     );
+
+    const currentCategoryType: AssetCategoryType | null = useMemo(() => {
+        if (!asset?.asset_category || !categoryList) return null;
+        const match = (categoryList as any[]).find((c) => c.name === asset.asset_category);
+        const t = match?.category_type;
+        return t === 'Project' || t === 'IT' ? t : null;
+    }, [asset?.asset_category, categoryList]);
 
     const { updateDoc, loading: isUpdating } = useFrappeUpdateDoc();
     const { upload } = useFrappeFileUpload();
@@ -502,7 +522,18 @@ const AssetOverviewContent: React.FC<{ assetId: string }> = ({ assetId }) => {
                                 icon={<Boxes className="h-4 w-4" />}
                                 label="Category"
                                 value={
-                                    <Badge variant="outline">{asset?.asset_category}</Badge>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Badge variant="outline">{asset?.asset_category}</Badge>
+                                        {currentCategoryType && (
+                                            <Badge
+                                                variant="outline"
+                                                className={`font-medium ${categoryTypeBadgeClass[currentCategoryType]}`}
+                                            >
+                                                {categoryTypeIconMap[currentCategoryType]}
+                                                {currentCategoryType}
+                                            </Badge>
+                                        )}
+                                    </div>
                                 }
                             />
                             <DetailRow

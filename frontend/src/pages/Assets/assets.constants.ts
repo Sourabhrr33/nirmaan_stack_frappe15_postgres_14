@@ -9,9 +9,18 @@ export const ASSET_MANAGEMENT_DOCTYPE = 'Asset Management';
 export const ASSET_CATEGORY_FIELDS = [
     'name',
     'asset_category',
+    'category_type',
     'creation',
     'modified',
 ] as const;
+
+// Asset Category types
+export type AssetCategoryType = 'Project' | 'IT';
+
+export const ASSET_CATEGORY_TYPE_OPTIONS: { label: AssetCategoryType; value: AssetCategoryType }[] = [
+    { label: 'Project', value: 'Project' },
+    { label: 'IT', value: 'IT' },
+];
 
 // Asset Master fields
 export const ASSET_MASTER_FIELDS = [
@@ -90,6 +99,10 @@ export const ASSET_CACHE_KEYS = {
 
     // Category dropdowns (shared across all dialogs)
     CATEGORIES_DROPDOWN: `${ASSET_CATEGORY_DOCTYPE}_dropdown`,
+
+    // Category-name lists by type (used by useAssetCategoryNamesByType)
+    PROJECT_CATEGORIES_NAMES: `${ASSET_CATEGORY_DOCTYPE}_names_project`,
+    IT_CATEGORIES_NAMES: `${ASSET_CATEGORY_DOCTYPE}_names_it`,
 
     // Asset Management (for individual asset assignments)
     assetManagement: (assetId: string) => `${ASSET_MANAGEMENT_DOCTYPE}_${assetId}`,

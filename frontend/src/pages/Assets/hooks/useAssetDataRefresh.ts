@@ -26,9 +26,12 @@ export const useAssetDataRefresh = () => {
 
     /**
      * Refresh category dropdown data across all dialogs (Add, Edit)
+     * and per-type category-name lists used by Project / IT tabs.
      */
     const refreshCategoryDropdowns = useCallback(() => {
         mutate(ASSET_CACHE_KEYS.CATEGORIES_DROPDOWN, undefined, { revalidate: true });
+        mutate(ASSET_CACHE_KEYS.PROJECT_CATEGORIES_NAMES, undefined, { revalidate: true });
+        mutate(ASSET_CACHE_KEYS.IT_CATEGORIES_NAMES, undefined, { revalidate: true });
     }, [mutate]);
 
     /**
