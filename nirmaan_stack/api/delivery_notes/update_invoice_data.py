@@ -70,6 +70,16 @@ def update_invoice_data(
         except ValueError as ve:
             frappe.throw(str(ve))
 
+        # Hard-block amount overage on POs. Even if the frontend allowed a submit
+        # (older clients, manual API calls), the server rejects when the total of
+        # all Pending+Approved invoices for this PO would exceed the PO total.
+        if doctype == "Procurement Orders":
+            _check_po_amount_overage(
+                po_name=docname,
+                new_amount=new_invoice_entry_data.get("amount"),
+                exclude_invoice_id=invoice_id,
+            )
+
         # --- Start Transaction ---
         frappe.db.begin()
 
@@ -186,6 +196,16 @@ def update_invoice_data(
             }
         }
 
+    except frappe.ValidationError as ve:
+        # Expected, user-actionable errors (overage, missing fields, malformed
+        # JSON, etc. — anything raised via frappe.throw). Surface the actual
+        # message so the frontend toast tells the user what to do.
+        frappe.db.rollback()
+        return {
+            "status": 400,
+            "message": str(ve),
+            "error": str(ve),
+        }
     except Exception as e:
         frappe.db.rollback()
         frappe.log_error(title="Invoice Data Update Error", message=frappe.get_traceback())
@@ -389,3 +409,52 @@ def delete_invoice_entry(docname: str, date_key: str = None, isSR: bool = False,
             "message": f"Invoice deletion failed. Please contact support.",
             "error": str(e)
         }
+
+
+def _check_po_amount_overage(po_name: str, new_amount, exclude_invoice_id: Optional[str] = None):
+    """Reject the request if (existing Pending+Approved invoices + new amount)
+    would exceed the PO's total_amount (incl. GST).
+
+    Excludes the invoice being edited (so editing in place doesn't double-count).
+    Raises via `frappe.throw` so the caller's outer try/except returns the error
+    to the frontend with a clear, user-actionable message.
+    """
+    if not po_name:
+        return
+    try:
+        new_amount_float = float(new_amount or 0)
+    except (TypeError, ValueError):
+        new_amount_float = 0.0
+    if new_amount_float <= 0:
+        return  # nothing to validate
+
+    po_total = frappe.db.get_value("Procurement Orders", po_name, "total_amount")
+    try:
+        po_total = float(po_total or 0)
+    except (TypeError, ValueError):
+        po_total = 0.0
+    if po_total <= 0:
+        return  # PO total not set / zero — skip validation
+
+    sql = """
+        SELECT COALESCE(SUM(invoice_amount), 0) AS total
+        FROM "tabVendor Invoices"
+        WHERE document_type = %(doctype)s
+          AND document_name = %(po_name)s
+          AND status IN ('Pending', 'Approved')
+    """
+    params = {"doctype": "Procurement Orders", "po_name": po_name}
+    if exclude_invoice_id:
+        sql += " AND name != %(exclude)s"
+        params["exclude"] = exclude_invoice_id
+
+    rows = frappe.db.sql(sql, params, as_dict=True)
+    existing = float(rows[0].get("total") or 0) if rows else 0.0
+
+    would_be_total = existing + new_amount_float
+    if would_be_total > po_total + 0.01:  # tolerate float fuzz
+        frappe.throw(
+            f"Total invoiced amount would be ₹{would_be_total:,.2f}, which exceeds "
+            f"the PO total of ₹{po_total:,.2f}. Already invoiced ₹{existing:,.2f}. "
+            f"Please revise the amount before submitting."
+        )
