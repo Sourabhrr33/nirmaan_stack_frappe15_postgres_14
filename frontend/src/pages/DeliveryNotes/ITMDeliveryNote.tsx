@@ -5,7 +5,7 @@ import {
   useFrappeGetDocList,
   useFrappePostCall,
 } from "frappe-react-sdk";
-import { Plus } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { TailSpin } from "react-loader-spinner";
 
 import {
@@ -59,6 +59,8 @@ const rowKey = (itemId: string, make?: string | null) =>
   `${itemId}|${make ?? ""}`;
 
 const today = () => new Date().toISOString().split("T")[0];
+
+const DN_HUB_PATH = "/prs&milestones/delivery-notes?view=create";
 
 // --- Component ---
 
@@ -176,15 +178,13 @@ const ITMDeliveryNote: React.FC = () => {
     [itemRows]
   );
 
-  // Lifecycle gate matching the PO page: only Dispatched / Partial /
-  // Delivered ITMs can have a DN added. The backend
-  // `create_itm_delivery_note` endpoint enforces the same — we mirror it
-  // client-side so the action button never appears when illegal.
+  // Lifecycle gate matching the PO page: only Dispatched / Partially Delivered
+  // ITMs can have a DN added. The backend `create_itm_delivery_note` endpoint
+  // enforces the same — we mirror it client-side so the action button never
+  // appears when illegal.
   const canEdit = useMemo(() => {
     const status = itm?.status;
-    return (
-      status === "Dispatched" || status === "Partially Delivered"
-    );
+    return status === "Dispatched" || status === "Partially Delivered";
   }, [itm]);
 
   const pageTitle =
@@ -239,7 +239,7 @@ const ITMDeliveryNote: React.FC = () => {
       setConfirmOpen(false);
       refetchDNs();
       if (viewMode === "create") {
-        navigate("/prs&milestones/delivery-notes?view=create");
+        navigate(DN_HUB_PATH);
       }
     } catch (e: any) {
       toast({
@@ -265,8 +265,14 @@ const ITMDeliveryNote: React.FC = () => {
 
   if (itmError || !itm) {
     return (
-      <div className="flex items-center justify-center h-[80vh] text-red-600">
-        Error: {(itmError as any)?.message || "Transfer Memo not found."}
+      <div className="p-6 space-y-4">
+        <div className="text-center text-red-600 py-4">
+          {(itmError as any)?.message || "Transfer Memo not found."}
+        </div>
+        <Button variant="outline" onClick={() => navigate(DN_HUB_PATH)}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to DN Hub
+        </Button>
       </div>
     );
   }
@@ -275,13 +281,25 @@ const ITMDeliveryNote: React.FC = () => {
 
   return (
     <div className="container mx-auto px-4 py-4 max-w-6xl space-y-4">
-      <h1 className="text-xl font-bold text-foreground">{pageTitle}</h1>
+      {/* Back + Title */}
+      <div className="flex items-center gap-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate(DN_HUB_PATH)}
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+        <h1 className="text-xl font-bold text-foreground">{pageTitle}</h1>
+      </div>
 
       <ITMDeliveryMetadataBar
         itm={itm}
         sourceProjectName={payload?.source_project_name}
         targetProjectName={payload?.target_project_name}
         dnCount={dnCount}
+        estimatedValue={itm.estimated_value ?? 0}
       />
 
       {viewMode === "create" && dnCount === 0 && (
@@ -325,7 +343,7 @@ const ITMDeliveryNote: React.FC = () => {
           </div>
         )}
 
-        {/* Pivot-style table — one column per DN, optional New Qty column */}
+        {/* Pivot-style table — one column per DN, optional New Entry column */}
         <div className="relative overflow-x-auto">
           <Table>
             <TableHeader>
@@ -339,8 +357,6 @@ const ITMDeliveryNote: React.FC = () => {
                 <TableHead className="text-right text-xs font-medium uppercase tracking-wider text-muted-foreground w-[100px]">
                   Transfer Qty
                 </TableHead>
-                {/* DN columns sit between "Transfer Qty" and "New Entry" / */}
-                {/* "Total Received" — same slot the PO pivot uses. */}
                 {dns.map((dn, idx) => {
                   const updatedBy = dn.updated_by_user || dn.owner;
                   const displayName = updatedBy
@@ -371,8 +387,6 @@ const ITMDeliveryNote: React.FC = () => {
                     </TableHead>
                   );
                 })}
-                {/* New Entry column comes BEFORE Total Received and gets the */}
-                {/* primary-tinted background — matches PO pivot exactly. */}
                 {showEdit && canEdit && (
                   <TableHead className="text-center text-xs font-medium uppercase tracking-wider text-muted-foreground bg-primary/5 min-w-[80px]">
                     New Entry
@@ -389,17 +403,20 @@ const ITMDeliveryNote: React.FC = () => {
                 const remaining = row.transfer_quantity - row.total_received;
                 return (
                   <TableRow key={k}>
-                    {/* Item cell — matches PO pivot: name + inline red-tinted */}
-                    {/* make, no category sub-line (parity with PO row body). */}
                     <TableCell className="text-sm max-w-[260px]">
                       <div className="line-clamp-2 break-words">
-                        {row.item_name}
+                        <span className="font-medium">{row.item_name}</span>
                         {row.make && (
                           <span className="text-red-500 font-light">
                             {" "}- {row.make}
                           </span>
                         )}
                       </div>
+                      {row.category && (
+                        <span className="block text-xs text-muted-foreground">
+                          {row.category}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-center text-sm text-muted-foreground">
                       {row.unit}
