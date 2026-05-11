@@ -17,7 +17,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { PlusCircle, Search, Plus } from "lucide-react";
 import { CustomAttachment } from "@/components/helpers/CustomAttachment";
 import { useFrappeCreateDoc, useFrappeFileUpload, useFrappeUpdateDoc } from "frappe-react-sdk";
-import RSelect from "react-select";
+import RSelect, { components as RSComponents, MenuListProps } from "react-select";
 import { toast } from "@/components/ui/use-toast";
 import { TDSItemValues, tdsItemSchema } from "./types";
 import { useTDSItemOptions } from "../hooks/useTDSItemOptions";
@@ -224,21 +224,19 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
         watchedTdsItemId
     });
 
-    // Build item options with "+ Custom Item" at the end
+    // Build item options (Custom Item is rendered as a sticky footer, not an option)
     const itemOptionsWithCustom = useMemo(() => {
         const nameCounts = new Map<string, number>();
         itemOptionsForWP.forEach(item => {
             nameCounts.set(item.label, (nameCounts.get(item.label) || 0) + 1);
         });
-        const standardItems = itemOptionsForWP.map(item => ({
+        return itemOptionsForWP.map(item => ({
             label: item.label,
             value: item.value,
             category: item.category,
             categoryName: item.categoryName,
             showCategory: (nameCounts.get(item.label) || 0) > 1,
         }));
-
-        return [...standardItems, { label: "+ Custom Item", value: "__custom__", category: "", categoryName: "", showCategory: false }];
     }, [itemOptionsForWP]);
 
     // Track previous values
@@ -486,17 +484,34 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
                                                     className="react-select-container"
                                                     classNamePrefix="react-select"
                                                     isDisabled={!selectedWP}
+                                                    components={{
+                                                        MenuList: (props: MenuListProps<any, false>) => (
+                                                            <div>
+                                                                <RSComponents.MenuList {...props}>
+                                                                    {props.children}
+                                                                </RSComponents.MenuList>
+                                                                <button
+                                                                    type="button"
+                                                                    onMouseDown={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        handleItemChange({ value: "__custom__" });
+                                                                        (props.selectProps as any).onMenuClose?.();
+                                                                    }}
+                                                                    className="w-full text-left px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border-t border-gray-200 sticky bottom-0"
+                                                                >
+                                                                    + Custom Item
+                                                                </button>
+                                                            </div>
+                                                        ),
+                                                    }}
                                                     formatOptionLabel={(option: any) => (
-                                                        option.value === "__custom__" ? (
-                                                            <span className="text-blue-600 font-medium">+ Custom Item</span>
-                                                        ) : (
-                                                            <span>
-                                                                {option.label}
-                                                                {option.showCategory && option.categoryName && (
-                                                                    <span className="text-blue-600 ml-1">({option.categoryName})</span>
-                                                                )}
-                                                            </span>
-                                                        )
+                                                        <span>
+                                                            {option.label}
+                                                            {option.showCategory && option.categoryName && (
+                                                                <span className="text-blue-600 ml-1">({option.categoryName})</span>
+                                                            )}
+                                                        </span>
                                                     )}
                                                 />
                                             )}

@@ -147,6 +147,8 @@ export const TDSRepositoryMaster: React.FC = () => {
     const isPermission = ["Nirmaan Admin Profile", "Nirmaan Estimates Executive Profile",
         "Nirmaan PMO Executive Profile",].includes(role);
 
+    const isAdmin = role === "Nirmaan Admin Profile";
+
     //  console.log("role",isPermission,role)
 
 
@@ -326,7 +328,7 @@ export const TDSRepositoryMaster: React.FC = () => {
                     <h2 className="text-2xl font-bold tracking-tight text-gray-800">TDS Repository</h2>
                 </div>
                 <div className="flex items-center gap-2">
-                    {isPermission && <AddTDSItemDialog onSuccess={() => handleRefetch()} />}
+                    {isAdmin && <AddTDSItemDialog onSuccess={() => handleRefetch()} />}
                 </div>
             </div>
 
