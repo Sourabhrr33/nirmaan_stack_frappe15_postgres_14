@@ -9,7 +9,7 @@ import { DNDetailDialog } from "./components/DNDetailDialog";
 import { useDownloadDN } from "./hooks/useDownloadDN";
 import { DeliveryNote } from "@/types/NirmaanStack/DeliveryNotes";
 import { cn } from "@/lib/utils";
-import type { InternalTransferMemo } from "@/types/NirmaanStack/InternalTransferMemo";
+import type { ITMListRow } from "@/pages/InternalTransferMemos/config/itmList.config";
 import type { NirmaanUsers } from "@/types/NirmaanStack/NirmaanUsers";
 
 // UI Components
@@ -200,7 +200,7 @@ const DeliveryNotes: React.FC = () => {
   // for projects they may not have User Permissions for.
   const shouldFetchITMs = activeView === "CREATE" && !!selectedProject;
   const { data: itmResult, isLoading: itmLoading } = useFrappeGetCall<{
-    message: { data: InternalTransferMemo[] };
+    message: { data: ITMListRow[] };
   }>(
     "nirmaan_stack.api.internal_transfers.get_itms_list.get_itms_list",
     shouldFetchITMs
@@ -223,6 +223,7 @@ const DeliveryNotes: React.FC = () => {
     const q = itmSearchQuery.toLowerCase();
     return itmList.filter((itm) =>
       itm.name.toLowerCase().includes(q) ||
+      itm.source_project_name?.toLowerCase().includes(q) ||
       itm.source_project?.toLowerCase().includes(q)
     );
   }, [itmList, itmSearchQuery]);
@@ -502,7 +503,19 @@ const DeliveryNotes: React.FC = () => {
                                   {itm.name}
                                 </Link>
                               </TableCell>
-                              <TableCell>{itm.source_project}</TableCell>
+                              <TableCell
+                                title={
+                                  itm.source_type === "Warehouse"
+                                    ? "Warehouse"
+                                    : itm.source_project ?? undefined
+                                }
+                              >
+                                {itm.source_type === "Warehouse"
+                                  ? "Warehouse"
+                                  : itm.source_project_name ||
+                                    itm.source_project ||
+                                    "--"}
+                              </TableCell>
                               <TableCell>{formatDate(itm.creation)}</TableCell>
                               <TableCell>
                                 <Badge variant={itm.status === "Dispatched" ? "orange" : "green"}>

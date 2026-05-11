@@ -122,7 +122,6 @@ const ProjectGstPage = lazy(() => import("@/pages/ProjectGst/ProjectGstPage"));
 const InternalTransferMemosList = lazy(() => import("@/pages/InternalTransferMemos/InternalTransferMemosList"));
 const CreateITMPage = lazy(() => import("@/pages/InternalTransferMemos/Create/CreateITMPage"));
 const ITMDetail = lazy(() => import("@/pages/InternalTransferMemos/ITMDetail"));
-const ITRDetail = lazy(() => import("@/pages/InternalTransferMemos/ITRDetail"));
 
 // Warehouse
 const WarehouseStockPage = lazy(() => import("@/pages/Warehouse/WarehouseStockPage"));
@@ -730,7 +729,6 @@ export const appRoutes: RouteObject[] = [
             children: [
               { index: true, element: <Suspense fallback={null}><InternalTransferMemosList /></Suspense> },
               { path: "create", element: <Suspense fallback={null}><CreateITMPage /></Suspense> },
-              { path: "itr/:id", element: <Suspense fallback={null}><ITRDetail /></Suspense> },
               { path: ":id", element: <Suspense fallback={null}><ITMDetail /></Suspense> },
             ],
           },
