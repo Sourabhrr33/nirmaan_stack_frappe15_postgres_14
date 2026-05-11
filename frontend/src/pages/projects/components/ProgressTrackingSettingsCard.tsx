@@ -34,6 +34,8 @@ export interface ProgressTrackingSettingsCardProps {
     /** Optional callback fired after wizard or unified-save completes. Use this from the
      *  Schedule tab to refetch the Project Schedule doc. */
     onAfterSave?: () => Promise<void> | void;
+    /** Card heading. Defaults to "Progress Tracking"; the Schedule tab passes "Project Schedule". */
+    title?: string;
 }
 
 export const ProgressTrackingSettingsCard: React.FC<ProgressTrackingSettingsCardProps> = ({
@@ -41,6 +43,7 @@ export const ProgressTrackingSettingsCard: React.FC<ProgressTrackingSettingsCard
     project_mutate,
     current_role,
     onAfterSave,
+    title = "Progress Tracking",
 }) => {
     const projectDataWithZones = projectData as ProjectsWithZones;
 
@@ -305,7 +308,7 @@ export const ProgressTrackingSettingsCard: React.FC<ProgressTrackingSettingsCard
                     <div className="flex items-center gap-3">
                         <Settings className="h-4 w-4 text-gray-400" />
                         <div>
-                            <h3 className="text-sm font-medium text-gray-900">Progress Tracking</h3>
+                            <h3 className="text-sm font-medium text-gray-900">{title}</h3>
                             <p className="text-xs text-gray-500">
                                 {isMilestoneTrackingEnabled ? "Enabled" : "Not configured"}
                             </p>

@@ -17,7 +17,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { PlusCircle, Search, Plus } from "lucide-react";
 import { CustomAttachment } from "@/components/helpers/CustomAttachment";
 import { useFrappeCreateDoc, useFrappeFileUpload, useFrappeUpdateDoc } from "frappe-react-sdk";
-import RSelect from "react-select";
+import RSelect, { components as RSComponents, MenuListProps } from "react-select";
 import { toast } from "@/components/ui/use-toast";
 import { TDSItemValues, tdsItemSchema } from "./types";
 import { useTDSItemOptions } from "../hooks/useTDSItemOptions";
@@ -34,10 +34,16 @@ export interface CustomItemDialogProps {
     allCustomItems: Array<{ id: string; name: string; wp: string; cat: string }>;
     standardItems: Array<{ label: string; value: string; category?: string; categoryName?: string }>;
     catList: any[];
+    // When true, hides the "Matching Custom" and "Matching Standard" suggestion lists
+    // and shows only the search field + "Create New Custom" action. Used by the
+    // project-side request dialog where reusing existing items is intentionally
+    // blocked — the user is creating a project-only custom and shouldn't be nudged
+    // toward the master.
+    hideMatches?: boolean;
 }
 
-export const CustomItemDialog: React.FC<CustomItemDialogProps> = ({ 
-    open, onClose, onSelect, allCustomItems, standardItems, catList 
+export const CustomItemDialog: React.FC<CustomItemDialogProps> = ({
+    open, onClose, onSelect, allCustomItems, standardItems, catList, hideMatches = false
 }) => {
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -111,47 +117,49 @@ export const CustomItemDialog: React.FC<CustomItemDialogProps> = ({
                         />
                     </div>
 
-                    <div className="max-h-[250px] overflow-y-auto space-y-3">
-                        {/* Matching Custom Items */}
-                        {matchingCustom.length > 0 && (
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 mb-1">── Matching Custom ──</p>
-                                {matchingCustom.map(item => (
-                                    <button
-                                        key={item.id}
-                                        onClick={() => handleSelectCustom(item)}
-                                        className="w-full text-left p-3 bg-yellow-50 border border-yellow-200 hover:bg-yellow-100 rounded-md text-sm flex items-center justify-between transition-colors mb-2"
-                                    >
-                                        <div className="flex flex-col">
-                                            <span className="font-semibold text-yellow-800">[{item.id}] {item.name}</span>
-                                            <span className="text-xs text-yellow-600 mt-1">{item.wp} → {item.cat}</span>
-                                        </div>
-                                        <PlusCircle className="h-5 w-5 text-red-500 drop-shadow-sm hover:text-red-600 transition-transform hover:scale-105" />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
+                    {!hideMatches && (
+                        <div className="max-h-[250px] overflow-y-auto space-y-3">
+                            {/* Matching Custom Items */}
+                            {matchingCustom.length > 0 && (
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-500 mb-1">── Matching Custom ──</p>
+                                    {matchingCustom.map(item => (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => handleSelectCustom(item)}
+                                            className="w-full text-left p-3 bg-yellow-50 border border-yellow-200 hover:bg-yellow-100 rounded-md text-sm flex items-center justify-between transition-colors mb-2"
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className="font-semibold text-yellow-800">[{item.id}] {item.name}</span>
+                                                <span className="text-xs text-yellow-600 mt-1">{item.wp} → {item.cat}</span>
+                                            </div>
+                                            <PlusCircle className="h-5 w-5 text-red-500 drop-shadow-sm hover:text-red-600 transition-transform hover:scale-105" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
 
-                        {/* Matching Standard Items */}
-                        {matchingStandard.length > 0 && (
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 mb-1">── Matching Standard ──</p>
-                                {matchingStandard.map(item => (
-                                    <button
-                                        key={item.value}
-                                        onClick={() => handleSelectStandard(item)}
-                                        className="w-full text-left p-3 bg-green-50 border border-green-200 hover:bg-green-100 rounded-md text-sm flex items-center justify-between transition-colors mb-2"
-                                    >
-                                        <div className="flex flex-col">
-                                            <span className="font-semibold text-green-800">{item.label}</span>
-                                            <span className="text-xs text-green-600 mt-1">({item.categoryName})</span>
-                                        </div>
-                                        <PlusCircle className="h-5 w-5 text-red-500 drop-shadow-sm hover:text-red-600 transition-transform hover:scale-105" />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                            {/* Matching Standard Items */}
+                            {matchingStandard.length > 0 && (
+                                <div>
+                                    <p className="text-xs font-semibold text-gray-500 mb-1">── Matching Standard ──</p>
+                                    {matchingStandard.map(item => (
+                                        <button
+                                            key={item.value}
+                                            onClick={() => handleSelectStandard(item)}
+                                            className="w-full text-left p-3 bg-green-50 border border-green-200 hover:bg-green-100 rounded-md text-sm flex items-center justify-between transition-colors mb-2"
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className="font-semibold text-green-800">{item.label}</span>
+                                                <span className="text-xs text-green-600 mt-1">({item.categoryName})</span>
+                                            </div>
+                                            <PlusCircle className="h-5 w-5 text-red-500 drop-shadow-sm hover:text-red-600 transition-transform hover:scale-105" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div className="flex justify-end gap-2 pt-2 border-t">
                         <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
@@ -216,21 +224,19 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
         watchedTdsItemId
     });
 
-    // Build item options with "+ Custom Item" at the end
+    // Build item options (Custom Item is rendered as a sticky footer, not an option)
     const itemOptionsWithCustom = useMemo(() => {
         const nameCounts = new Map<string, number>();
         itemOptionsForWP.forEach(item => {
             nameCounts.set(item.label, (nameCounts.get(item.label) || 0) + 1);
         });
-        const standardItems = itemOptionsForWP.map(item => ({
+        return itemOptionsForWP.map(item => ({
             label: item.label,
             value: item.value,
             category: item.category,
             categoryName: item.categoryName,
             showCategory: (nameCounts.get(item.label) || 0) > 1,
         }));
-
-        return [...standardItems, { label: "+ Custom Item", value: "__custom__", category: "", categoryName: "", showCategory: false }];
     }, [itemOptionsForWP]);
 
     // Track previous values
@@ -478,17 +484,34 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
                                                     className="react-select-container"
                                                     classNamePrefix="react-select"
                                                     isDisabled={!selectedWP}
+                                                    components={{
+                                                        MenuList: (props: MenuListProps<any, false>) => (
+                                                            <div>
+                                                                <RSComponents.MenuList {...props}>
+                                                                    {props.children}
+                                                                </RSComponents.MenuList>
+                                                                <button
+                                                                    type="button"
+                                                                    onMouseDown={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        handleItemChange({ value: "__custom__" });
+                                                                        (props.selectProps as any).onMenuClose?.();
+                                                                    }}
+                                                                    className="w-full text-left px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border-t border-gray-200 sticky bottom-0"
+                                                                >
+                                                                    + Custom Item
+                                                                </button>
+                                                            </div>
+                                                        ),
+                                                    }}
                                                     formatOptionLabel={(option: any) => (
-                                                        option.value === "__custom__" ? (
-                                                            <span className="text-blue-600 font-medium">+ Custom Item</span>
-                                                        ) : (
-                                                            <span>
-                                                                {option.label}
-                                                                {option.showCategory && option.categoryName && (
-                                                                    <span className="text-blue-600 ml-1">({option.categoryName})</span>
-                                                                )}
-                                                            </span>
-                                                        )
+                                                        <span>
+                                                            {option.label}
+                                                            {option.showCategory && option.categoryName && (
+                                                                <span className="text-blue-600 ml-1">({option.categoryName})</span>
+                                                            )}
+                                                        </span>
                                                     )}
                                                 />
                                             )}

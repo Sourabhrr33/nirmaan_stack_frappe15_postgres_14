@@ -3030,29 +3030,37 @@ const DependencePreviewCell: React.FC<DependencePreviewCellProps> = ({
                     return (
                       <li
                         key={c.name || c.critical_po_item}
-                        className="flex items-center justify-between gap-2 text-xs"
+                        className="text-xs"
                       >
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded bg-amber-50 text-amber-700 text-[11px] font-semibold tabular-nums shrink-0 ring-1 ring-inset ring-amber-100">
-                            {idx + 1}
-                          </span>
-                          <span className="min-w-0 truncate">
-                            <span className="text-slate-700 font-normal">
-                              {c.item_name || c.critical_po_item}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded bg-amber-50 text-amber-700 text-[11px] font-semibold tabular-nums shrink-0 ring-1 ring-inset ring-amber-100">
+                              {idx + 1}
                             </span>
-                            {c.sub_category && (
-                              <span className="text-blue-600 font-normal ml-1">
-                                · {c.sub_category}
+                            <span className="min-w-0 truncate">
+                              <span className="text-slate-700 font-normal">
+                                {c.item_name || c.critical_po_item}
                               </span>
-                            )}
+                              {c.sub_category && (
+                                <span className="text-blue-600 font-normal ml-1">
+                                  · {c.sub_category}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          <span
+                            className={`inline-flex items-center justify-center min-w-[44px] h-5 px-1.5 rounded text-[11px] font-semibold tabular-nums ring-1 ring-inset shrink-0 ${pillCls}`}
+                            title="Required delivery %"
+                          >
+                            {pct.toFixed(0)}%
                           </span>
                         </div>
-                        <span
-                          className={`inline-flex items-center justify-center min-w-[44px] h-5 px-1.5 rounded text-[11px] font-semibold tabular-nums ring-1 ring-inset shrink-0 ${pillCls}`}
-                          title="Required delivery %"
-                        >
-                          {pct.toFixed(0)}%
-                        </span>
+                        {c.remarks && (
+                          <div className="text-[9px] text-slate-500 leading-snug mt-0.5 ml-7 text-left">
+                            <span className="text-slate-400 mr-1">Remarks:</span>
+                            {c.remarks}
+                          </div>
+                        )}
                       </li>
                     );
                   })}

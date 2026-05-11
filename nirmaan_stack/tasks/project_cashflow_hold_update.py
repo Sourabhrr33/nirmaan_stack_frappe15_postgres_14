@@ -3,7 +3,7 @@ from frappe.utils import flt
 
 from nirmaan_stack.nirmaan_stack.doctype.projects.projects import CEO_HOLD_SYSTEM_USER
 
-EXCLUDED_STATUSES = ("CEO Hold", "Completed", "Halted", "Handover")
+EXCLUDED_STATUSES = ("CEO Hold", "Completed")
 
 
 def update_projects_cashflow_hold():

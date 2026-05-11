@@ -19,7 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import RSelect from "react-select";
+import RSelect, { components as RSComponents, MenuListProps } from "react-select";
 import { CustomAttachment } from "@/components/helpers/CustomAttachment";
 import { useTDSItemOptions } from "@/pages/tds/hooks/useTDSItemOptions";
 import { CustomItemDialog } from "@/pages/tds/components/AddTDSItemDialog";
@@ -87,6 +87,8 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
         itemOptionsForWP.forEach(item => {
             nameCounts.set(item.label, (nameCounts.get(item.label) || 0) + 1);
         });
+        // "+ Custom Item" is rendered as a sticky footer in the dropdown (see custom MenuList below),
+        // so it's intentionally not included in the options array.
         return itemOptionsForWP.map(item => ({
             label: item.label,
             value: item.value,
@@ -123,6 +125,10 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
     }, [watchedTdsItemId, form]);
 
     const handleItemChange = (opt: any) => {
+        if (opt?.value === "__custom__") {
+            setCustomItemDialogOpen(true);
+            return;
+        }
         const isCustom = opt?.value?.startsWith("CUS-");
         const itemInfo = getCategoryForItem(opt?.value);
 
@@ -274,6 +280,26 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
                                                     placeholder="Select Item"
                                                     classNamePrefix="react-select"
                                                     isDisabled={!selectedWP}
+                                                    components={{
+                                                        MenuList: (props: MenuListProps<any, false>) => (
+                                                            <div>
+                                                                <RSComponents.MenuList {...props}>
+                                                                    {props.children}
+                                                                </RSComponents.MenuList>
+                                                                <button
+                                                                    type="button"
+                                                                    onMouseDown={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        handleItemChange({ value: "__custom__" });
+                                                                    }}
+                                                                    className="w-full text-left px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border-t border-gray-200 sticky bottom-0"
+                                                                >
+                                                                    + Custom Item
+                                                                </button>
+                                                            </div>
+                                                        ),
+                                                    }}
                                                     formatOptionLabel={(option: any) => (
                                                         <span>
                                                             {option.label}
@@ -458,6 +484,7 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
                 allCustomItems={allCustomItems}
                 standardItems={itemOptionsForWP}
                 catList={catList || []}
+                hideMatches
             />
         </Dialog>
     );
