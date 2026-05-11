@@ -64,7 +64,7 @@ export const BulkPdfDownloadButton = ({ projectId, projectName }: BulkPdfDownloa
           {!isProjectManager && (
             <DropdownMenuItem onClick={initiateInvoiceDownload} className="cursor-pointer">
               <Download className="mr-2 h-4 w-4" />
-              <span>Download All Invoices</span>
+              <span>Download All Outflow Invoices</span>
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={() => handleBulkDownload("DC", "Delivery Challans")} className="cursor-pointer">
@@ -78,6 +78,10 @@ export const BulkPdfDownloadButton = ({ projectId, projectName }: BulkPdfDownloa
           <DropdownMenuItem onClick={() => handleBulkDownload("DN", "Delivery Notes")} className="cursor-pointer">
             <Download className="mr-2 h-4 w-4" />
             <span>Download All DNs</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => handleBulkDownload("ClientInvoice", "Client Invoices")} className="cursor-pointer">
+            <Download className="mr-2 h-4 w-4" />
+            <span>Download All Client Invoices</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
