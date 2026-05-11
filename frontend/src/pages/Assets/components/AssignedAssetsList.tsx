@@ -8,14 +8,17 @@ import { DataTableColumnHeader } from '@/components/data-table/data-table-column
 import { useServerDataTable } from '@/hooks/useServerDataTable';
 import { formatDate } from '@/utils/FormatDate';
 import { Badge } from '@/components/ui/badge';
-import { Hash, User, FileText, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Hash, User, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
 
 import {
     ASSET_MANAGEMENT_DOCTYPE,
     ASSET_MANAGEMENT_FIELDS,
     ASSET_MANAGEMENT_SEARCHABLE_FIELDS,
     ASSET_MANAGEMENT_DATE_COLUMNS,
+    AssetCategoryType,
 } from '../assets.constants';
+import { useAssetMasterNamesByType } from '../hooks/useAssetMasterNamesByType';
 
 interface AssetManagement {
     name: string;
@@ -37,15 +40,39 @@ interface NirmaanUser {
     full_name: string;
 }
 
-export const AssignedAssetsList: React.FC = () => {
-    // Fetch asset details
+interface AssignedAssetsListProps {
+    assetType?: AssetCategoryType;
+}
+
+// Outer guard — blocks the table mount until masterNames-by-type is resolved.
+// Without this guard useServerDataTable would fire an initial fetch with an
+// empty/placeholder filter and the resulting "0 rows" can race past the real
+// fetch and leave the table looking empty.
+export const AssignedAssetsList: React.FC<AssignedAssetsListProps> = ({ assetType }) => {
+    const { masterNames, isLoading: typeMastersLoading } = useAssetMasterNamesByType(assetType);
+
+    if (assetType && typeMastersLoading) {
+        return <Skeleton className="h-96 w-full bg-gray-100" />;
+    }
+
+    return <AssignedAssetsListInner assetType={assetType} masterNames={masterNames} />;
+};
+
+interface AssignedAssetsListInnerProps {
+    assetType?: AssetCategoryType;
+    masterNames: string[];
+}
+
+const AssignedAssetsListInner: React.FC<AssignedAssetsListInnerProps> = ({ assetType, masterNames }) => {
+    // Fetch asset details — scope to typed asset names when filtering
     const { data: assetsList } = useFrappeGetDocList<AssetMaster>(
         'Asset Master',
         {
             fields: ['name', 'asset_name', 'asset_category'],
+            filters: assetType ? [['name', 'in', masterNames.length ? masterNames : ['__none__']]] : [],
             limit: 0,
         },
-        'assets_for_assigned_list'
+        assetType ? `assets_for_assigned_list_${assetType}` : 'assets_for_assigned_list'
     );
 
     const assetsMap = useMemo(() => {
@@ -181,6 +208,12 @@ export const AssignedAssetsList: React.FC = () => {
         },
     ], [assetsMap, usersMap]);
 
+    const additionalFilters = useMemo(() => {
+        if (!assetType) return [];
+        if (masterNames.length === 0) return [['asset', 'in', ['__none__']]];
+        return [['asset', 'in', masterNames]];
+    }, [assetType, masterNames]);
+
     const {
         table,
         totalCount,
@@ -198,8 +231,9 @@ export const AssignedAssetsList: React.FC = () => {
         fetchFields: ASSET_MANAGEMENT_FIELDS as unknown as string[],
         searchableFields: ASSET_MANAGEMENT_SEARCHABLE_FIELDS,
         defaultSort: 'asset_assigned_on desc',
-        urlSyncKey: 'assigned_assets',
+        urlSyncKey: assetType ? `assigned_assets_${assetType.toLowerCase()}` : 'assigned_assets',
         enableRowSelection: false,
+        additionalFilters,
     });
 
     return (
@@ -219,7 +253,7 @@ export const AssignedAssetsList: React.FC = () => {
             onExport="default"
             onExportAll={exportAllRows}
             isExporting={isExporting}
-            exportFileName="assigned_assets_data"
+            exportFileName={assetType ? `assigned_${assetType.toLowerCase()}_assets_data` : 'assigned_assets_data'}
             showRowSelection={false}
         />
     );

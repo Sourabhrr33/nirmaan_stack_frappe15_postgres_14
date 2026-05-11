@@ -18,6 +18,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { CustomAttachment } from '@/components/helpers/CustomAttachment';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/use-toast';
 import { Hash, User, Upload, AlertTriangle, FileText, Download } from 'lucide-react';
 import { TailSpin } from 'react-loader-spinner';
@@ -28,8 +29,10 @@ import {
     ASSET_MANAGEMENT_SEARCHABLE_FIELDS,
     ASSET_MANAGEMENT_DATE_COLUMNS,
     ASSET_MASTER_DOCTYPE,
+    AssetCategoryType,
 } from '../assets.constants';
 import { useAssetDataRefresh } from '../hooks/useAssetDataRefresh';
+import { useAssetMasterNamesByType } from '../hooks/useAssetMasterNamesByType';
 
 interface AssetManagement {
     name: string;
@@ -53,9 +56,39 @@ interface NirmaanUser {
 
 interface PendingActionsListProps {
     onUploaded?: () => void;
+    assetType?: AssetCategoryType;
 }
 
-export const PendingActionsList: React.FC<PendingActionsListProps> = ({ onUploaded }) => {
+// Outer guard — blocks the table mount until masterNames-by-type is resolved.
+// Without this guard useServerDataTable would fire an initial fetch with a
+// placeholder filter and the resulting "0 rows" can race past the real fetch.
+export const PendingActionsList: React.FC<PendingActionsListProps> = ({ onUploaded, assetType }) => {
+    const { masterNames, isLoading: typeMastersLoading } = useAssetMasterNamesByType(assetType);
+
+    if (assetType && typeMastersLoading) {
+        return <Skeleton className="h-96 w-full bg-gray-100" />;
+    }
+
+    return (
+        <PendingActionsListInner
+            assetType={assetType}
+            masterNames={masterNames}
+            onUploaded={onUploaded}
+        />
+    );
+};
+
+interface PendingActionsListInnerProps {
+    assetType?: AssetCategoryType;
+    masterNames: string[];
+    onUploaded?: () => void;
+}
+
+const PendingActionsListInner: React.FC<PendingActionsListInnerProps> = ({
+    assetType,
+    masterNames,
+    onUploaded,
+}) => {
     const { toast } = useToast();
     const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
     const [selectedAssignment, setSelectedAssignment] = useState<AssetManagement | null>(null);
@@ -109,14 +142,15 @@ export const PendingActionsList: React.FC<PendingActionsListProps> = ({ onUpload
         }
     };
 
-    // Fetch asset details
+    // Fetch asset details — scope to typed asset names when filtering
     const { data: assetsList } = useFrappeGetDocList<AssetMaster>(
         'Asset Master',
         {
             fields: ['name', 'asset_name', 'asset_category'],
+            filters: assetType ? [['name', 'in', masterNames.length ? masterNames : ['__none__']]] : [],
             limit: 0,
         },
-        'assets_for_pending_list'
+        assetType ? `assets_for_pending_list_${assetType}` : 'assets_for_pending_list'
     );
 
     const assetsMap = useMemo(() => {
@@ -315,6 +349,18 @@ export const PendingActionsList: React.FC<PendingActionsListProps> = ({ onUpload
         },
     ], [assetsMap, usersMap, downloadingAssetId, handleDownloadDeclaration]);
 
+    const additionalFilters = useMemo(() => {
+        const filters: any[] = [['asset_declaration_attachment', '=', '']];
+        if (assetType) {
+            if (masterNames.length === 0) {
+                filters.push(['asset', 'in', ['__none__']]);
+            } else {
+                filters.push(['asset', 'in', masterNames]);
+            }
+        }
+        return filters;
+    }, [assetType, masterNames]);
+
     const {
         table,
         totalCount,
@@ -331,9 +377,9 @@ export const PendingActionsList: React.FC<PendingActionsListProps> = ({ onUpload
         fetchFields: ASSET_MANAGEMENT_FIELDS as unknown as string[],
         searchableFields: ASSET_MANAGEMENT_SEARCHABLE_FIELDS,
         defaultSort: 'asset_assigned_on desc',
-        urlSyncKey: 'pending_actions',
+        urlSyncKey: assetType ? `pending_actions_${assetType.toLowerCase()}` : 'pending_actions',
         enableRowSelection: false,
-        additionalFilters: [['asset_declaration_attachment', '=', '']],
+        additionalFilters,
     });
 
     return (
