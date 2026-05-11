@@ -32,4 +32,15 @@ export interface ProjectInvoice {
    * 2 = Cancelled
    */
   docstatus: 0 | 1 | 2;
+
+  // --- Document AI autofill metadata (set when this invoice was created via autofill) ---
+  autofill_used?: 0 | 1;
+  autofill_processor_id?: string;
+  autofill_extracted_invoice_no?: string;
+  autofill_extracted_invoice_date?: string;
+  autofill_extracted_amount?: number;
+  /** JSON: `{invoice_no, invoice_date, amount}` confidence scores. */
+  autofill_confidence_json?: string;
+  /** JSON: full Document AI entity list `[{type, value, confidence}, ...]`. */
+  autofill_all_entities_json?: string;
 }

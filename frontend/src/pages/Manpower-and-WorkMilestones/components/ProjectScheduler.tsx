@@ -127,7 +127,13 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
   } = useProjectScheduler(projectId);
 
   const { role, user_id } = useUserData();
-  const canEditDates = user_id === 'Administrator' || role === 'Nirmaan Admin Profile';
+  const canEditDates =
+    user_id === 'Administrator' ||
+    role === 'Nirmaan Admin Profile' ||
+    role === 'Nirmaan PMO Executive Profile';
+  // Admin + PMO see milestones disabled in the latest report; everyone else
+  // has them filtered out.
+  const canSeeDisabled = canEditDates;
 
   const { updateDoc, loading: savingDates } = useFrappeUpdateDoc();
 
@@ -202,9 +208,26 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
     setExpanded((p) => ({ ...p, [header]: !(p[header] ?? true) }));
   const isOpen = (header: string) => expanded[header] ?? true;
 
+  // Non-admin users do not see milestones disabled in the latest report; the
+  // group rollup (earliest/latest) is recomputed from the visible subset so
+  // the header date range doesn't leak hidden disabled-milestone dates.
+  const visibleGroups = useMemo(() => {
+    if (canSeeDisabled) return groups;
+    return groups.map((g) => {
+      const milestones = g.milestones.filter((m) => !m.disabledByReport);
+      let earliestStart: Date | null = null;
+      let latestEnd: Date | null = null;
+      milestones.forEach((m) => {
+        if (m.startDate && (!earliestStart || m.startDate < earliestStart)) earliestStart = m.startDate;
+        if (m.endDate && (!latestEnd || m.endDate > latestEnd)) latestEnd = m.endDate;
+      });
+      return { ...g, milestones, earliestStart, latestEnd };
+    });
+  }, [groups, canSeeDisabled]);
+
   const totalMilestones = useMemo(
-    () => groups.reduce((sum, g) => sum + g.milestones.length, 0),
-    [groups],
+    () => visibleGroups.reduce((sum, g) => sum + g.milestones.length, 0),
+    [visibleGroups],
   );
 
   const selectedDateObj = useMemo(
@@ -429,6 +452,7 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
           project_mutate={mutateProject as any}
           current_role={role}
           onAfterSave={handleSettingsAfterSave}
+          title="Project Schedule"
         />
       )}
       <Card className={cn('min-w-0 overflow-hidden', className)}>
@@ -440,7 +464,7 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="font-normal">
-                {groups.length} headers · {totalMilestones} milestones
+                {visibleGroups.length} headers · {totalMilestones} milestones
               </Badge>
               {/* EDIT DATES button moved into the date cards as a small pencil icon */}
               {/* EXPORT CSV — hidden for now
@@ -578,13 +602,13 @@ export const ProjectScheduler: React.FC<ProjectSchedulerProps> = ({ projectId, c
             */}
             </div>
 
-            {groups.length === 0 ? (
+            {visibleGroups.length === 0 ? (
               <div className="p-6 text-sm text-gray-500 text-center">
                 No work headers enabled for this project.
               </div>
             ) : (
               <div className="divide-y">
-                {groups.map((group, gIdx) => (
+                {visibleGroups.map((group, gIdx) => (
                   <SchedulerGroupRow
                     key={group.header}
                     group={group}
@@ -795,7 +819,7 @@ const SchedulerGroupRow: React.FC<SchedulerGroupRowProps> = ({
           {group.milestones.length === 0 ? (
             <div className="px-6 py-3 text-xs text-gray-500">No milestones defined.</div>
           ) : (
-            group.milestones.map((m) => {
+            group.milestones.map((m, idx) => {
               const progress =
                 selectedDateObj && projectStartDate && projectDurationDays > 0
                   ? interpolatedProgress(m, selectedDateObj, projectStartDate, projectDurationDays)
@@ -822,6 +846,9 @@ const SchedulerGroupRow: React.FC<SchedulerGroupRowProps> = ({
                 >
                   <div className="px-3 py-2 pl-6 md:pl-9 text-sm text-gray-700">
                     <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-gray-400 tabular-nums shrink-0">
+                        {idx + 1}.
+                      </span>
                       <span className={cn('truncate', m.disabledByReport && 'line-through text-gray-500')}>
                         {m.work_milestone_name}
                       </span>
@@ -850,35 +877,35 @@ const SchedulerGroupRow: React.FC<SchedulerGroupRowProps> = ({
                         </span>
                       )}
                     </div>
-                    {m.firstWeekIdx !== -1 && m.startDate && m.endDate && (
+                    {!m.disabledByReport && m.firstWeekIdx !== -1 && m.startDate && m.endDate && (
                       <div className="md:hidden mt-1 text-[11px] text-gray-500">
                         {formatDate(m.startDate)} → {formatDate(m.endDate)}
                         <span className="ml-2 text-gray-400">· {m.durationDays} day{m.durationDays === 1 ? '' : 's'}</span>
                       </div>
                     )}
-                    {m.firstWeekIdx === -1 && (
+                    {(m.disabledByReport || m.firstWeekIdx === -1) && (
                       <div className="md:hidden mt-1 text-[11px] italic text-gray-400">
-                        Not scheduled
+                        {m.disabledByReport ? '—' : 'Not scheduled'}
                       </div>
                     )}
                   </div>
                   <div className="px-3 py-2 text-xs text-gray-600 hidden md:block">
-                    {m.startDate ? (
-                      formatDate(m.startDate)
-                    ) : (
+                    {m.disabledByReport || !m.startDate ? (
                       <span className="italic text-gray-400">—</span>
+                    ) : (
+                      formatDate(m.startDate)
                     )}
                   </div>
                   <div className="px-3 py-2 text-xs text-gray-600 hidden md:block">
-                    {m.endDate ? (
-                      formatDate(m.endDate)
-                    ) : (
+                    {m.disabledByReport || !m.endDate ? (
                       <span className="italic text-gray-400">—</span>
+                    ) : (
+                      formatDate(m.endDate)
                     )}
                   </div>
                   <div className="px-3 py-2 text-xs text-gray-600 hidden md:flex items-center gap-2">
                     <span className="flex-1 truncate">
-                      {m.firstWeekIdx !== -1
+                      {!m.disabledByReport && m.firstWeekIdx !== -1
                         ? `${m.durationDays} day${m.durationDays === 1 ? '' : 's'}`
                         : '—'}
                     </span>
