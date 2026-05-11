@@ -19,6 +19,10 @@ import {
   X,
   Edit3,
   Scale,
+  Network,
+  GitBranch,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   Dialog,
@@ -68,10 +72,18 @@ import * as z from "zod";
 import {
   useFrappeCreateDoc,
   useFrappeDeleteDoc,
+  useFrappeGetDoc,
   useFrappeGetDocList,
   useFrappeUpdateDoc,
   useFrappePostCall,
 } from "frappe-react-sdk";
+import ReactSelect from "react-select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 
 // --- Types ---
 export interface WorkHeaders {
@@ -84,6 +96,23 @@ export interface WorkHeaders {
   modified?: string;
   owner?: string;
   modified_by?: string;
+}
+
+export interface WorkMilestoneDependency {
+  name?: string;
+  dependent_milestone: string;
+  milestone_name?: string;
+  dependent_milestone_order?: number;
+}
+
+export interface WorkMilestoneCriticalPODependency {
+  name?: string;
+  critical_po_item: string;
+  item_name?: string;
+  sub_category?: string;
+  critical_po_category?: string;
+  delivery_percentage?: number;
+  remarks?: string;
 }
 
 export interface WorkMilestone {
@@ -101,6 +130,8 @@ export interface WorkMilestone {
   week_7?: number;
   week_8?: number;
   week_9?: number;
+  dependent_milestones?: WorkMilestoneDependency[];
+  critical_po_dependencies?: WorkMilestoneCriticalPODependency[];
   creation?: string;
   modified?: string;
   owner?: string;
@@ -110,6 +141,13 @@ export interface WorkMilestone {
 export interface WorkPackage {
   name: string;
   work_package_name: string;
+}
+
+export interface CriticalPOItemOption {
+  name: string;
+  item_name?: string;
+  sub_category?: string;
+  critical_po_category?: string;
 }
 
 // --- Schemas ---
@@ -193,6 +231,7 @@ export const WorkHeaderMilestones: React.FC = () => {
       orderBy: { field: "work_package_name", order: "asc" },
     }
   );
+
 
   // Reordering state
   const [isReordering, setIsReordering] = useState(false);
@@ -1586,7 +1625,7 @@ const BulkEditMilestonesDialog: React.FC<BulkEditMilestonesDialogProps> = ({
                           />
                         </TableCell>
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((w) => {
-                          const weekVal = milestone[`week_${w}` as keyof WorkMilestone];
+                          const weekVal = milestone[`week_${w}` as keyof WorkMilestone] as number | undefined;
                           return (
                             <TableCell key={w} className="p-1.5 px-2">
                               <Input
@@ -2006,6 +2045,507 @@ const EditWorkMilestoneDialog: React.FC<EditWorkMilestoneDialogProps> = ({
   );
 };
 
+// --- Milestone Dependencies Dialog ---
+interface MilestoneDependenciesDialogProps {
+  milestone: WorkMilestone;
+  mutate: () => Promise<any>;
+}
+
+const MilestoneDependenciesDialog: React.FC<MilestoneDependenciesDialogProps> = ({
+  milestone,
+  mutate,
+}) => {
+  const [open, setOpen] = useState(false);
+  const { updateDoc, loading } = useFrappeUpdateDoc();
+
+  const { data: fullMilestone, mutate: refetchFullMilestone } =
+    useFrappeGetDoc<WorkMilestone>(
+      "Work Milestones",
+      milestone.name,
+      open ? undefined : null
+    );
+
+  // Only same-header milestones are eligible — filter at the query level.
+  const { data: allMilestonesForPicker } = useFrappeGetDocList<WorkMilestone>(
+    "Work Milestones",
+    {
+      fields: [
+        "name",
+        "work_milestone_name",
+        "work_header",
+        "work_milestone_order",
+      ],
+      filters: [["work_header", "=", milestone.work_header]],
+      limit: 0,
+      orderBy: { field: "work_milestone_order", order: "asc" },
+    },
+    open ? undefined : null
+  );
+
+  const { data: criticalPOItems } = useFrappeGetDocList<CriticalPOItemOption>(
+    "Critical PO Items",
+    {
+      fields: ["name", "item_name", "sub_category", "critical_po_category"],
+      limit: 0,
+      orderBy: { field: "item_name", order: "asc" },
+    },
+    open ? undefined : null
+  );
+
+  const [dependentRows, setDependentRows] = useState<WorkMilestoneDependency[]>(
+    []
+  );
+  const [criticalRows, setCriticalRows] = useState<
+    WorkMilestoneCriticalPODependency[]
+  >([]);
+
+  useEffect(() => {
+    if (fullMilestone) {
+      setDependentRows(
+        (fullMilestone.dependent_milestones || []).map((r) => ({ ...r }))
+      );
+      setCriticalRows(
+        (fullMilestone.critical_po_dependencies || []).map((r) => ({ ...r }))
+      );
+    }
+  }, [fullMilestone]);
+
+  const milestonePickerOptions = useMemo(() => {
+    return (allMilestonesForPicker || [])
+      .filter((m) => m.name !== milestone.name)
+      .map((m) => ({
+        value: m.name,
+        label: m.work_milestone_name,
+        order: m.work_milestone_order,
+      }));
+  }, [allMilestonesForPicker, milestone.name]);
+
+  const criticalPOItemsByName = useMemo(() => {
+    const map = new Map<string, CriticalPOItemOption>();
+    (criticalPOItems || []).forEach((it) => map.set(it.name, it));
+    return map;
+  }, [criticalPOItems]);
+
+  const criticalPickerOptions = useMemo<CriticalPickerOption[]>(() => {
+    return (criticalPOItems || []).map((it) => ({
+      value: it.name,
+      label: it.item_name || it.name,
+      itemName: it.item_name,
+      subCategory: it.sub_category,
+      category: it.critical_po_category,
+    }));
+  }, [criticalPOItems]);
+
+  const handleSave = async () => {
+    const cleanDeps = dependentRows.filter((r) => r.dependent_milestone);
+    const cleanCritical = criticalRows.filter((r) => r.critical_po_item);
+    for (const r of cleanCritical) {
+      const pct = r.delivery_percentage ?? 0;
+      if (pct < 0 || pct > 100) {
+        toast({
+          title: "Invalid Delivery %",
+          description: `Delivery % for ${r.critical_po_item} must be between 0 and 100.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    try {
+      await updateDoc("Work Milestones", milestone.name, {
+        dependent_milestones: cleanDeps.map((r) => ({
+          dependent_milestone: r.dependent_milestone,
+        })),
+        critical_po_dependencies: cleanCritical.map((r) => ({
+          critical_po_item: r.critical_po_item,
+          delivery_percentage: r.delivery_percentage ?? 0,
+          remarks: r.remarks || "",
+        })),
+      });
+      toast({
+        title: "Dependencies Updated",
+        description: "Changes have been saved.",
+        variant: "success",
+      });
+      await mutate();
+      await refetchFullMilestone();
+      setOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update dependencies.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const depCount = dependentRows.filter((r) => r.dependent_milestone).length;
+  const poCount = criticalRows.filter((r) => r.critical_po_item).length;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+          title="Manage dependencies"
+        >
+          <Network className="h-3.5 w-3.5" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg overflow-visible">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-semibold text-slate-900">
+            Dependencies
+          </DialogTitle>
+          <DialogDescription className="text-sm text-slate-500 truncate">
+            {milestone.work_milestone_name}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          <DependentMilestonesSection
+            rows={dependentRows}
+            setRows={setDependentRows}
+            pickerOptions={milestonePickerOptions}
+          />
+          <CriticalPODependenciesSection
+            rows={criticalRows}
+            setRows={setCriticalRows}
+            pickerOptions={criticalPickerOptions}
+            itemsByName={criticalPOItemsByName}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-2 pt-2 border-t">
+          <span className="text-xs text-slate-500">
+            {depCount} milestone{depCount !== 1 ? "s" : ""} · {poCount} critical PO
+            {poCount !== 1 ? "s" : ""}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              className="text-slate-600"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={loading}
+              className="bg-slate-900 hover:bg-slate-800 text-white"
+            >
+              {loading ? (
+                <TailSpin height={16} width={16} color="white" />
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// --- Dependent Milestones Section ---
+interface PickerOption {
+  value: string;
+  label: string;
+  order?: number;
+}
+
+interface CriticalPickerOption {
+  value: string;
+  label: string;
+  itemName?: string;
+  subCategory?: string;
+  category?: string;
+}
+
+interface DependentMilestonesSectionProps {
+  rows: WorkMilestoneDependency[];
+  setRows: React.Dispatch<React.SetStateAction<WorkMilestoneDependency[]>>;
+  pickerOptions: PickerOption[];
+}
+
+const DependentMilestonesSection: React.FC<DependentMilestonesSectionProps> = ({
+  rows,
+  setRows,
+  pickerOptions,
+}) => {
+  const optionByValue = useMemo(() => {
+    const m = new Map<string, PickerOption>();
+    pickerOptions.forEach((o) => m.set(o.value, o));
+    return m;
+  }, [pickerOptions]);
+
+  const value = useMemo<PickerOption[]>(
+    () =>
+      rows
+        .filter((r) => r.dependent_milestone)
+        .map((r) => {
+          const opt = optionByValue.get(r.dependent_milestone);
+          return {
+            value: r.dependent_milestone,
+            label: r.milestone_name || opt?.label || r.dependent_milestone,
+            order: opt?.order ?? r.dependent_milestone_order,
+          };
+        }),
+    [rows, optionByValue]
+  );
+
+  const handleChange = (selected: readonly PickerOption[] | null) => {
+    const next = (selected || []).map((opt) => ({
+      dependent_milestone: opt.value,
+      milestone_name: opt.label,
+    }));
+    setRows(next);
+  };
+
+  const formatOptionLabel = (option: PickerOption) => (
+    <div className="flex items-center gap-1.5">
+      {option.order != null && (
+        <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded bg-slate-100 text-slate-500 text-[10px] font-medium tabular-nums">
+          {option.order}
+        </span>
+      )}
+      <span className="text-slate-800">{option.label}</span>
+    </div>
+  );
+
+  return (
+    <div className="border-t pt-4 space-y-2">
+      <h4 className="text-sm font-semibold text-slate-800">
+        Dependent Milestones
+      </h4>
+      <ReactSelect<PickerOption, true>
+        isMulti
+        value={value}
+        options={pickerOptions}
+        onChange={(sel) => handleChange(sel as readonly PickerOption[] | null)}
+        formatOptionLabel={formatOptionLabel}
+        placeholder="Select one or more milestones..."
+        classNamePrefix="react-select"
+        menuPortalTarget={document.body}
+        menuPosition="fixed"
+        closeMenuOnSelect={false}
+        maxMenuHeight={240}
+        styles={{
+          menuPortal: (base) => ({
+            ...base,
+            zIndex: 9999,
+            pointerEvents: "auto",
+          }),
+          menu: (base) => ({ ...base, pointerEvents: "auto" }),
+          menuList: (base) => ({ ...base, pointerEvents: "auto" }),
+          control: (base) => ({ ...base, minHeight: 36, fontSize: 13 }),
+        }}
+      />
+      {value.length === 0 && (
+        <p className="text-xs text-slate-400">
+          No dependencies. This milestone can start independently.
+        </p>
+      )}
+    </div>
+  );
+};
+
+// --- Critical PO Dependencies Section ---
+interface CriticalPODependenciesSectionProps {
+  rows: WorkMilestoneCriticalPODependency[];
+  setRows: React.Dispatch<
+    React.SetStateAction<WorkMilestoneCriticalPODependency[]>
+  >;
+  pickerOptions: CriticalPickerOption[];
+  itemsByName: Map<string, CriticalPOItemOption>;
+}
+
+const CriticalPODependenciesSection: React.FC<
+  CriticalPODependenciesSectionProps
+> = ({ rows, setRows, pickerOptions, itemsByName }) => {
+  const pickedIds = useMemo(
+    () => new Set(rows.map((r) => r.critical_po_item).filter(Boolean)),
+    [rows]
+  );
+
+  const availableOptions = useMemo<CriticalPickerOption[]>(
+    () => pickerOptions.filter((o) => !pickedIds.has(o.value)),
+    [pickerOptions, pickedIds]
+  );
+
+  const addRow = (opt: CriticalPickerOption) => {
+    if (pickedIds.has(opt.value)) return;
+    const meta = itemsByName.get(opt.value);
+    setRows((prev) => [
+      ...prev,
+      {
+        critical_po_item: opt.value,
+        item_name: meta?.item_name,
+        sub_category: meta?.sub_category,
+        critical_po_category: meta?.critical_po_category,
+        delivery_percentage: 0,
+        remarks: "",
+      },
+    ]);
+  };
+
+  const removeRow = (itemId: string) => {
+    setRows((prev) => prev.filter((r) => r.critical_po_item !== itemId));
+  };
+
+  const updateField = (
+    itemId: string,
+    field: keyof WorkMilestoneCriticalPODependency,
+    val: any
+  ) => {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.critical_po_item === itemId ? { ...r, [field]: val } : r
+      )
+    );
+  };
+
+  const formatOptionLabel = (option: CriticalPickerOption) => (
+    <div className="flex items-center gap-1.5 text-sm">
+      <span className="text-slate-800">
+        {option.itemName || option.label}
+      </span>
+      {option.subCategory && (
+        <>
+          <span className="text-slate-300">·</span>
+          <span className="text-blue-600">{option.subCategory}</span>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="border-t pt-4 space-y-2">
+      <h4 className="text-sm font-semibold text-slate-800">
+        Critical PO Dependencies
+      </h4>
+      <ReactSelect<CriticalPickerOption, false>
+        value={null}
+        options={availableOptions}
+        onChange={(opt) => {
+          if (opt) addRow(opt as CriticalPickerOption);
+        }}
+        formatOptionLabel={formatOptionLabel}
+        placeholder={
+          availableOptions.length === 0
+            ? "All Critical PO Items added"
+            : "Search & add Critical PO Item..."
+        }
+        isDisabled={availableOptions.length === 0}
+        classNamePrefix="react-select"
+        menuPortalTarget={document.body}
+        menuPosition="fixed"
+        maxMenuHeight={240}
+        styles={{
+          menuPortal: (base) => ({
+            ...base,
+            zIndex: 9999,
+            pointerEvents: "auto",
+          }),
+          menu: (base) => ({ ...base, pointerEvents: "auto" }),
+          menuList: (base) => ({ ...base, pointerEvents: "auto" }),
+          control: (base) => ({ ...base, minHeight: 36, fontSize: 13 }),
+        }}
+      />
+      {rows.filter((r) => r.critical_po_item).length === 0 ? (
+        <p className="text-xs text-slate-400">
+          No critical PO gates configured.
+        </p>
+      ) : (
+        <div className="space-y-2 pt-1">
+          {rows
+            .filter((r) => r.critical_po_item)
+            .map((row, idx) => {
+              const subCategory =
+                row.sub_category ||
+                itemsByName.get(row.critical_po_item)?.sub_category;
+              const itemName =
+                row.item_name ||
+                itemsByName.get(row.critical_po_item)?.item_name ||
+                row.critical_po_item;
+              return (
+                <div
+                  key={row.critical_po_item}
+                  className="rounded-md border border-slate-200 p-2.5 space-y-2 bg-slate-50/40"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-sm flex-wrap min-w-0">
+                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded bg-slate-200/70 text-slate-600 text-[11px] font-semibold tabular-nums shrink-0">
+                        {idx + 1}
+                      </span>
+                      <span className="font-medium text-slate-800 truncate">
+                        {itemName}
+                      </span>
+                      {subCategory && (
+                        <>
+                          <span className="text-slate-300">·</span>
+                          <span className="text-blue-600">{subCategory}</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step="0.01"
+                          value={row.delivery_percentage ?? 0}
+                          onChange={(e) =>
+                            updateField(
+                              row.critical_po_item,
+                              "delivery_percentage",
+                              e.target.value === ""
+                                ? 0
+                                : Number(e.target.value)
+                            )
+                          }
+                          className="h-8 w-20 text-xs"
+                          placeholder="%"
+                        />
+                        <span className="text-xs text-slate-500">%</span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeRow(row.critical_po_item)}
+                        className="h-7 w-7 text-slate-400 hover:text-red-600"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  <Textarea
+                    value={row.remarks || ""}
+                    onChange={(e) =>
+                      updateField(
+                        row.critical_po_item,
+                        "remarks",
+                        e.target.value
+                      )
+                    }
+                    placeholder="Remarks (optional)"
+                    className="text-xs min-h-[44px]"
+                  />
+                </div>
+              );
+            })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 // --- Work Header Card ---
 interface WorkHeaderCardProps {
@@ -2237,10 +2777,16 @@ const WorkHeaderCard: React.FC<WorkHeaderCardProps> = ({
               </p>
             </div>
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow className="bg-slate-50/50 border-b border-slate-100">
                   {isReordering && (
+                    <TableHead className="w-12 text-center text-slate-500 font-medium text-xs uppercase tracking-wider">
+                      #
+                    </TableHead>
+                  )}
+                  {!isReordering && (
                     <TableHead className="w-12 text-center text-slate-500 font-medium text-xs uppercase tracking-wider">
                       #
                     </TableHead>
@@ -2252,6 +2798,9 @@ const WorkHeaderCard: React.FC<WorkHeaderCardProps> = ({
                     <>
                       <TableHead className="w-24 text-slate-500 font-medium text-xs uppercase tracking-wider">
                         Weightage
+                      </TableHead>
+                      <TableHead className="w-20 text-center text-slate-500 font-medium text-xs uppercase tracking-wider">
+                        Dependence
                       </TableHead>
                       {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((w) => (
                         <TableHead key={w} className="w-12 text-center text-slate-500 font-medium text-[10px] uppercase tracking-wider">
@@ -2293,6 +2842,13 @@ const WorkHeaderCard: React.FC<WorkHeaderCardProps> = ({
                         </span>
                       </TableCell>
                     )}
+                    {!isReordering && (
+                      <TableCell className="text-center">
+                        <span className="inline-flex items-center justify-center w-6 h-5 rounded bg-slate-100 text-slate-500 text-[11px] font-medium tabular-nums">
+                          {milestone.work_milestone_order ?? index + 1}
+                        </span>
+                      </TableCell>
+                    )}
                     <TableCell className="font-medium text-slate-800">
                       {milestone.work_milestone_name}
                     </TableCell>
@@ -2301,9 +2857,14 @@ const WorkHeaderCard: React.FC<WorkHeaderCardProps> = ({
                         <TableCell className="text-slate-600">
                           {(milestone.weightage || 1.0).toFixed(2)}
                         </TableCell>
+                        <TableCell className="text-center">
+                          <DependencePreviewCell
+                            milestoneName={milestone.name}
+                          />
+                        </TableCell>
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((w) => (
                           <TableCell key={w} className="text-center text-slate-500 text-xs">
-                            {milestone[`week_${w}` as keyof WorkMilestone] || 0}
+                            {(milestone[`week_${w}` as keyof WorkMilestone] as number | undefined) || 0}
                           </TableCell>
                         ))}
                       </>
@@ -2317,6 +2878,10 @@ const WorkHeaderCard: React.FC<WorkHeaderCardProps> = ({
                             milestone={milestone}
                             mutate={workMilestonesMutate}
                           />
+                          <MilestoneDependenciesDialog
+                            milestone={milestone}
+                            mutate={workMilestonesMutate}
+                          />
                           <DeleteMilestoneAlertDialog
                             milestone={milestone}
                             mutate={workMilestonesMutate}
@@ -2327,11 +2892,185 @@ const WorkHeaderCard: React.FC<WorkHeaderCardProps> = ({
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           )}
         </div>
       )}
     </div>
+  );
+};
+
+// --- Dependence Preview Cell (hover-card icon shown in milestone list) ---
+interface DependencePreviewCellProps {
+  milestoneName: string;
+}
+
+const DependencePreviewCell: React.FC<DependencePreviewCellProps> = ({
+  milestoneName,
+}) => {
+  // Lazy fetch: only request the full doc once the user has interacted.
+  const [shouldFetch, setShouldFetch] = useState(false);
+  // Controlled open so we can support both hover (desktop) and click (touch).
+  const [open, setOpen] = useState(false);
+
+  const { data: fullMilestone, isLoading } = useFrappeGetDoc<WorkMilestone>(
+    "Work Milestones",
+    milestoneName,
+    shouldFetch ? undefined : null
+  );
+
+  const deps = fullMilestone?.dependent_milestones || [];
+  const critical = fullMilestone?.critical_po_dependencies || [];
+  const hasAny = deps.length > 0 || critical.length > 0;
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (next && !shouldFetch) setShouldFetch(true);
+  };
+
+  // On touch devices there is no pointer-leave to auto-close the card.
+  // Listen for a tap outside both the trigger and the content to close it.
+  useEffect(() => {
+    if (!open) return;
+    const handleOutside = (e: TouchEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-hover-card]")) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("touchstart", handleOutside);
+    return () => document.removeEventListener("touchstart", handleOutside);
+  }, [open]);
+
+  return (
+    <HoverCard open={open} onOpenChange={handleOpenChange} delayDuration={150}>
+      <HoverCardTrigger asChild>
+        <button
+          type="button"
+          onClick={() => {
+            // Tap support for tablet/mobile (and desktop click as a bonus).
+            handleOpenChange(!open);
+          }}
+          className="inline-flex items-center justify-center h-6 w-6 rounded text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
+          aria-label={open ? "Hide dependencies" : "View dependencies"}
+        >
+          {open ? (
+            <Eye className="h-3.5 w-3.5" />
+          ) : (
+            <EyeOff className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent align="center" className="w-80 p-0 overflow-hidden">
+        {!shouldFetch || isLoading ? (
+          <div className="flex items-center gap-2 text-xs text-slate-500 p-4">
+            <TailSpin width={12} height={12} color="#64748b" />
+            Loading…
+          </div>
+        ) : !hasAny ? (
+          <p className="text-xs text-slate-500 p-4">
+            No dependencies configured.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {deps.length > 0 && (
+              <div className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <GitBranch className="w-3.5 h-3.5 text-indigo-500" />
+                    <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+                      Dependent Milestones
+                    </span>
+                  </div>
+                  <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold tabular-nums">
+                    {deps.length}
+                  </span>
+                </div>
+                <ul className="space-y-1">
+                  {deps.map((d) => (
+                    <li
+                      key={d.name || d.dependent_milestone}
+                      className="flex items-center gap-2 text-xs"
+                    >
+                      {d.dependent_milestone_order != null && (
+                        <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded bg-indigo-50 text-indigo-700 text-[11px] font-semibold tabular-nums shrink-0 ring-1 ring-inset ring-indigo-100">
+                          {d.dependent_milestone_order}
+                        </span>
+                      )}
+                      <span className="text-slate-700 font-normal truncate">
+                        {d.milestone_name || d.dependent_milestone}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {critical.length > 0 && (
+              <div className="p-3 bg-slate-50/40">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Package className="w-3.5 h-3.5 text-amber-600" />
+                    <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+                      Critical PO Gates
+                    </span>
+                  </div>
+                  <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-semibold tabular-nums">
+                    {critical.length}
+                  </span>
+                </div>
+                <ul className="space-y-1.5">
+                  {critical.map((c, idx) => {
+                    const pct = c.delivery_percentage ?? 0;
+                    const pillCls =
+                      pct >= 70
+                        ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                        : pct >= 30
+                        ? "bg-amber-50 text-amber-700 ring-amber-200"
+                        : "bg-rose-50 text-rose-700 ring-rose-200";
+                    return (
+                      <li
+                        key={c.name || c.critical_po_item}
+                        className="text-xs"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded bg-amber-50 text-amber-700 text-[11px] font-semibold tabular-nums shrink-0 ring-1 ring-inset ring-amber-100">
+                              {idx + 1}
+                            </span>
+                            <span className="min-w-0 truncate">
+                              <span className="text-slate-700 font-normal">
+                                {c.item_name || c.critical_po_item}
+                              </span>
+                              {c.sub_category && (
+                                <span className="text-blue-600 font-normal ml-1">
+                                  · {c.sub_category}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          <span
+                            className={`inline-flex items-center justify-center min-w-[44px] h-5 px-1.5 rounded text-[11px] font-semibold tabular-nums ring-1 ring-inset shrink-0 ${pillCls}`}
+                            title="Required delivery %"
+                          >
+                            {pct.toFixed(0)}%
+                          </span>
+                        </div>
+                        {c.remarks && (
+                          <div className="text-[9px] text-slate-500 leading-snug mt-0.5 ml-7 text-left">
+                            <span className="text-slate-400 mr-1">Remarks:</span>
+                            {c.remarks}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </HoverCardContent>
+    </HoverCard>
   );
 };
 

@@ -12,6 +12,7 @@
   "tds_item_id",
   "tds_item_name",
   "make",
+  "status",
   "section_break_veve",
   "description",
   "tds_attachment"
@@ -39,6 +40,13 @@
    "fieldtype": "Data",
    "label": "Make",
    "options": "Makelist"
+  },
+  {
+   "default": "Not Verified",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Verified\nNot Verified"
   },
   {
    "fieldname": "section_break_veve",

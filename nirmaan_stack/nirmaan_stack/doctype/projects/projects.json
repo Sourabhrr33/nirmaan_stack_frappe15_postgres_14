@@ -12,6 +12,7 @@
   "project_value",
   "carpet_area",
   "project_value_gst",
+  "cashflow_gap_limited",
   "project_gst_number",
   "project_gst",
   "customer_section",
@@ -218,6 +219,14 @@
    "fieldname": "project_value_gst",
    "fieldtype": "Data",
    "label": "Project Value with GST"
+  },
+  {
+   "fieldname": "cashflow_gap_limited",
+   "fieldtype": "Float",
+   "label": "Cashflow Gap Limit",
+   "description": "If the project's cashflow gap (Outflow + Current Liabilities − Inflow) exceeds this, the daily cron auto-sets the project to CEO Hold. Backfilled at 20% of Project Value.",
+   "non_negative": 1,
+   "precision": "2"
   },
   {
    "fieldname": "project_milestone_details_section",

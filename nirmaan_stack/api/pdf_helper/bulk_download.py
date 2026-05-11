@@ -289,6 +289,14 @@ def run_bulk_download_job(project, doc_type, names=None, attachment_names=None, 
                     attachment_names = [vi.invoice_attachment for vi in vendor_invoices if vi.invoice_attachment]
                 else:
                     attachment_names = [d.name for d in frappe.get_all("Nirmaan Attachments", filters={"project": project, "attachment_type": config["filter"]}, fields=["name"], order_by="creation asc")]
+        elif doc_type == "Client Invoices":
+            project_invoices = frappe.get_all(
+                "Project Invoices",
+                filters={"project": project},
+                fields=["attachment"],
+                order_by="invoice_date asc",
+            )
+            attachment_names = [pi.attachment for pi in project_invoices if pi.attachment]
 
     items_to_process = attachment_names if attachment_names else names
     if not items_to_process:
@@ -315,7 +323,13 @@ def run_bulk_download_job(project, doc_type, names=None, attachment_names=None, 
 
             if attachment_names:
                 # Attachment Logic
-                if item.startswith("/files/") or item.startswith("http"):
+                # Any URL-like value (file path or S3-proxy URL) goes through
+                # _fetch_attachment_content; bare doc names hit the Nirmaan
+                # Attachments lookup. Project Invoice attachments are S3-proxy
+                # URLs like /api/method/frappe_s3_attachment.controller... so
+                # we route on the leading "/" or "http" rather than a strict
+                # /files/ prefix list.
+                if item.startswith("/") or item.startswith("http"):
                     content = _fetch_attachment_content(item)
                 else:
                     content = _fetch_attachment_content_by_name(item)
