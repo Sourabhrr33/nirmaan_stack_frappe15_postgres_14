@@ -114,3 +114,4 @@ nirmaan_stack.patches.v3_0.backfill_project_schedule #v2
 nirmaan_stack.patches.v3_0.backfill_cashflow_gap_limited #v1
 nirmaan_stack.patches.v3_0.backfill_tds_repository_status #v2
 nirmaan_stack.patches.v3_0.backfill_asset_category_type
+nirmaan_stack.patches.v3_0.backfill_blank_item_id
