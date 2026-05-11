@@ -296,7 +296,7 @@ export function InvoiceDialog<T extends DocumentType>({
       if (!extracted) {
         toast({
           title: "Auto-fill returned nothing",
-          description: "Document AI could not extract any fields. Please fill in manually.",
+          description: "AI could not extract any fields. Please fill in manually.",
           variant: "default",
         });
         return;
@@ -349,7 +349,7 @@ export function InvoiceDialog<T extends DocumentType>({
       if (filled.size === 0) {
         toast({
           title: "No high-confidence fields found",
-          description: "Document AI did not return values above the confidence threshold. Please fill in manually.",
+          description: "AI did not return values above the confidence threshold. Please fill in manually.",
           variant: "default",
         });
       } else {
@@ -660,7 +660,7 @@ export function InvoiceDialog<T extends DocumentType>({
                       Reading your invoice…
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Document AI is extracting invoice details. This usually takes a few seconds.
+                      AI is extracting invoice details. This usually takes a few seconds.
                     </p>
                   </div>
                 </div>
