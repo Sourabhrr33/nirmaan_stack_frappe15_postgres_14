@@ -9,7 +9,8 @@ import { useServerDataTable } from '@/hooks/useServerDataTable';
 import { formatDate } from '@/utils/FormatDate';
 import { formatToRoundedIndianRupee } from '@/utils/FormatPrice';
 import { Badge } from '@/components/ui/badge';
-import { Package, User, Hash, IndianRupee } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Package, User, Hash } from 'lucide-react';
 
 import {
     ASSET_MASTER_DOCTYPE,
@@ -18,6 +19,7 @@ import {
     ASSET_DATE_COLUMNS,
     ASSET_CONDITION_OPTIONS,
     ASSET_CATEGORY_DOCTYPE,
+    AssetCategoryType,
 } from '../assets.constants';
 
 interface AssetMaster {
@@ -47,16 +49,42 @@ const conditionColorMap: Record<string, string> = {
     'Damaged': 'bg-red-50 text-red-700 border-red-200',
 };
 
-export const AssetMasterList: React.FC = () => {
-    // Fetch categories for facet filter
-    const { data: categoryList } = useFrappeGetDocList(
+interface AssetMasterListProps {
+    assetType?: AssetCategoryType;
+}
+
+// Outer guard: resolves category names for the chosen type, then mounts the
+// inner table. Until the category list is loaded we render a skeleton — this
+// prevents useServerDataTable from firing a racy first fetch with a sentinel
+// (`__none__`) filter that returns 0 rows.
+export const AssetMasterList: React.FC<AssetMasterListProps> = ({ assetType }) => {
+    const { data: categoryList, isLoading: categoryListLoading } = useFrappeGetDocList(
         ASSET_CATEGORY_DOCTYPE,
         {
             fields: ['name', 'asset_category'],
+            filters: assetType ? [['category_type', '=', assetType]] : [],
             orderBy: { field: 'asset_category', order: 'asc' },
             limit: 0,
         },
-        'asset_categories_for_filter'
+        assetType ? `asset_categories_for_filter_${assetType}` : 'asset_categories_for_filter'
+    );
+
+    if (assetType && (categoryListLoading || !categoryList)) {
+        return <Skeleton className="h-96 w-full bg-gray-100" />;
+    }
+
+    return <AssetMasterListInner assetType={assetType} categoryList={categoryList ?? []} />;
+};
+
+interface AssetMasterListInnerProps {
+    assetType?: AssetCategoryType;
+    categoryList: { name: string; asset_category: string }[];
+}
+
+const AssetMasterListInner: React.FC<AssetMasterListInnerProps> = ({ assetType, categoryList }) => {
+    const categoryNames = useMemo(
+        () => categoryList.map((c) => c.name),
+        [categoryList]
     );
 
     // Fetch users for displaying assignee names
@@ -78,10 +106,10 @@ export const AssetMasterList: React.FC = () => {
     }, [usersList]);
 
     const categoryOptions = useMemo(() =>
-        categoryList?.map((cat: any) => ({
+        categoryList.map((cat) => ({
             label: cat.asset_category,
             value: cat.name,
-        })) || [],
+        })),
         [categoryList]
     );
 
@@ -243,6 +271,12 @@ export const AssetMasterList: React.FC = () => {
         },
     ], [usersMap]);
 
+    const additionalFilters = useMemo(() => {
+        if (!assetType) return [];
+        if (categoryNames.length === 0) return [['asset_category', 'in', ['__none__']]];
+        return [['asset_category', 'in', categoryNames]];
+    }, [assetType, categoryNames]);
+
     const {
         table,
         totalCount,
@@ -260,8 +294,9 @@ export const AssetMasterList: React.FC = () => {
         fetchFields: ASSET_MASTER_FIELDS as unknown as string[],
         searchableFields: ASSET_SEARCHABLE_FIELDS,
         defaultSort: 'creation desc',
-        urlSyncKey: 'asset_master',
+        urlSyncKey: assetType ? `asset_master_${assetType.toLowerCase()}` : 'asset_master',
         enableRowSelection: false,
+        additionalFilters,
     });
 
     const facetFilterOptions = useMemo(() => ({
@@ -293,7 +328,7 @@ export const AssetMasterList: React.FC = () => {
             onExport="default"
             onExportAll={exportAllRows}
             isExporting={isExporting}
-            exportFileName="asset_master_data"
+            exportFileName={assetType ? `asset_master_${assetType.toLowerCase()}_data` : 'asset_master_data'}
             showRowSelection={false}
         />
     );

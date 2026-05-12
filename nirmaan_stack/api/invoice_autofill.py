@@ -1,3 +1,5 @@
+import re
+
 import frappe
 
 from nirmaan_stack.services.document_ai import (
@@ -65,6 +67,8 @@ def extract_invoice_fields(file_url):
     invoice_no, invoice_no_conf = _pick_entity(entities, INVOICE_NO_KEYS)
     invoice_date, invoice_date_conf = _pick_entity(entities, INVOICE_DATE_KEYS, prefer_normalized=True)
     amount, amount_conf = _pick_entity(entities, AMOUNT_KEYS, prefer_normalized=True)
+    supplier_gstin, _ = _pick_entity(entities, ("supplier_gstin",))
+    receiver_gstin, _ = _pick_entity(entities, ("receiver_gstin",))
 
     # Slimmed-down view of every entity Document AI returned. Persisted on
     # Vendor Invoices so reviewers can see the full extraction (supplier_name,
@@ -81,10 +85,13 @@ def extract_invoice_fields(file_url):
         and ((entity.get("normalized_text") or entity.get("mention_text") or "").strip())
     ]
 
+    normalized_amount = _normalize_amount(amount) if amount_conf >= MIN_CONFIDENCE else ""
+    validation = _build_validation(file_doc, normalized_amount, supplier_gstin, receiver_gstin)
+
     return {
         "invoice_no": invoice_no if invoice_no_conf >= MIN_CONFIDENCE else "",
         "invoice_date": _normalize_date(invoice_date) if invoice_date_conf >= MIN_CONFIDENCE else "",
-        "amount": _normalize_amount(amount) if amount_conf >= MIN_CONFIDENCE else "",
+        "amount": normalized_amount,
         "confidence": {
             "invoice_no": round(invoice_no_conf, 3),
             "invoice_date": round(invoice_date_conf, 3),
@@ -93,6 +100,144 @@ def extract_invoice_fields(file_url):
         "entities": all_entities,
         "min_confidence": MIN_CONFIDENCE,
         "processor_id": processor_id,
+        "validation": validation,
+    }
+
+
+def _build_validation(file_doc, extracted_amount, extracted_supplier_gstin, extracted_receiver_gstin):
+    """Compute validation status against the parent PO (no-op for non-PO docs).
+
+    Returns a dict with three sub-blocks (amount, supplier_gstin, receiver_gstin).
+    Each sub-block has `match` (bool), `expected`, `extracted`, and a
+    user-facing `message`. Frontend uses these to surface inline warnings and
+    block submit on amount overage.
+    """
+    parent_doctype = (file_doc.attached_to_doctype or "").strip()
+    parent_name = (file_doc.attached_to_name or "").strip()
+
+    result = {
+        "applicable": False,
+        "doctype": parent_doctype,
+        "docname": parent_name,
+        "amount": None,
+        "supplier_gstin": None,
+        "receiver_gstin": None,
+    }
+
+    # Only POs have full validation context; SR / other doctypes skip validation.
+    if parent_doctype != "Procurement Orders" or not parent_name:
+        return result
+
+    try:
+        po = frappe.db.get_value(
+            "Procurement Orders",
+            parent_name,
+            ["total_amount", "project_gst", "vendor"],
+            as_dict=True,
+        )
+    except Exception:
+        return result
+    if not po:
+        return result
+
+    result["applicable"] = True
+
+    # --- Amount overage check ---
+    po_total = float(po.get("total_amount") or 0)
+    existing_sum = _existing_invoiced_sum(parent_name)
+    new_amount = 0.0
+    try:
+        new_amount = float(extracted_amount) if extracted_amount else 0.0
+    except (TypeError, ValueError):
+        new_amount = 0.0
+    would_be_total = existing_sum + new_amount
+    would_exceed = po_total > 0 and would_be_total > po_total + 0.01  # tolerate float fuzz
+    result["amount"] = {
+        "po_total": round(po_total, 2),
+        "existing_invoiced_sum": round(existing_sum, 2),
+        "new_amount": round(new_amount, 2),
+        "would_be_total": round(would_be_total, 2),
+        "would_exceed": would_exceed,
+        "message": (
+            f"Total invoiced would be ₹{would_be_total:,.2f}, exceeds PO total "
+            f"₹{po_total:,.2f}. Revise the amount or upload less."
+            if would_exceed
+            else None
+        ),
+    }
+
+    # --- Supplier GSTIN check (extracted vs vendor's vendor_gst) ---
+    vendor_gst = ""
+    if po.get("vendor"):
+        vendor_gst = (frappe.db.get_value("Vendors", po["vendor"], "vendor_gst") or "").strip()
+    result["supplier_gstin"] = _gstin_match(
+        extracted_supplier_gstin, vendor_gst, "supplier"
+    )
+
+    # --- Receiver GSTIN check (extracted vs PO.project_gst) ---
+    project_gst = (po.get("project_gst") or "").strip()
+    result["receiver_gstin"] = _gstin_match(
+        extracted_receiver_gstin, project_gst, "receiver"
+    )
+
+    return result
+
+
+def _existing_invoiced_sum(po_name):
+    """Sum invoice_amount of all Pending+Approved Vendor Invoices for this PO.
+
+    Rejected invoices are excluded (they're effectively cancelled). Pending is
+    included so a user can't keep stacking pending invoices that would push
+    the total over the PO once approved.
+    """
+    rows = frappe.db.sql(
+        """
+        SELECT COALESCE(SUM(invoice_amount), 0) AS total
+        FROM "tabVendor Invoices"
+        WHERE document_type = %s
+          AND document_name = %s
+          AND status IN ('Pending', 'Approved')
+        """,
+        ("Procurement Orders", po_name),
+        as_dict=True,
+    )
+    if not rows:
+        return 0.0
+    return float(rows[0].get("total") or 0)
+
+
+def _gstin_match(extracted, expected, role):
+    """Compare two GSTINs (case-insensitive, whitespace-trimmed).
+
+    role is "supplier" or "receiver" — used only in the user-facing message.
+    """
+    extracted_norm = (extracted or "").strip().upper()
+    expected_norm = (expected or "").strip().upper()
+    if not expected_norm:
+        # No expected GSTIN configured (vendor or PO missing it) — can't validate.
+        return {
+            "extracted": extracted_norm,
+            "expected": expected_norm,
+            "match": None,  # null = unknown / not applicable
+            "message": None,
+        }
+    if not extracted_norm:
+        return {
+            "extracted": "",
+            "expected": expected_norm,
+            "match": False,
+            "message": f"AI couldn't extract the {role}'s GSTIN — please verify the invoice.",
+        }
+    is_match = extracted_norm == expected_norm
+    return {
+        "extracted": extracted_norm,
+        "expected": expected_norm,
+        "match": is_match,
+        "message": (
+            None
+            if is_match
+            else f"Extracted {role} GSTIN ({extracted_norm}) does not match the expected GSTIN ({expected_norm})."
+        ),
     }
 
 
@@ -179,12 +324,25 @@ def _normalize_date(value):
 
 
 def _normalize_amount(value):
-    """Strip currency symbols and commas; return numeric string, else original."""
+    """Return a parseable numeric string or "" if value can't be cleanly parsed.
+
+    Document AI sometimes returns junk in OCR'd amount values — for example,
+    a footnote marker bleeding from a duplicate-copy page (e.g. ``*2,124.00``)
+    or stray characters from multi-page invoices. The frontend's amount input
+    regex blocks edits on non-numeric strings, so an empty field (which the
+    user can fill manually) is strictly better than a non-editable wrong value.
+
+    Strategy: keep only digits, dot, and a leading minus; return empty on any
+    parse failure.
+    """
     if not value:
         return ""
 
-    cleaned = value.strip().replace(",", "").replace("₹", "").replace("Rs.", "").replace("INR", "").strip()
+    cleaned = re.sub(r"[^\d.\-]", "", value.strip())
+    if not cleaned or not re.search(r"\d", cleaned):
+        return ""
+
     try:
         return str(float(cleaned))
     except ValueError:
-        return value
+        return ""

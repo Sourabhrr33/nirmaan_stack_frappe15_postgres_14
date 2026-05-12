@@ -13,6 +13,8 @@ interface ConfirmationState {
     isOpen: boolean;
     invoiceId: string | null;
     invoiceNo?: string | null;
+    /** Full invoice doc — needed by the Approve dialog's PO ↔ AI comparison view. */
+    invoice: VendorInvoice | null;
     action: "Approved" | "Rejected" | null;
 }
 
@@ -20,6 +22,7 @@ const initialConfirmationState: ConfirmationState = {
     isOpen: false,
     invoiceId: null,
     invoiceNo: null,
+    invoice: null,
     action: null,
 };
 
@@ -77,6 +80,7 @@ export const useInvoiceTaskActions = ({ onActionSuccess }: UseInvoiceActionsProp
             isOpen: true,
             invoiceId: invoice.name,
             invoiceNo: invoice.invoice_no || invoice.document_name,
+            invoice: invoice,
             action: action,
         });
     }, []);

@@ -150,8 +150,14 @@ doc_events = {
         "on_trash": "nirmaan_stack.integrations.controllers.asset_management.on_trash"
     },
     "Projects": {
-        "after_insert": "nirmaan_stack.nirmaan_stack.doctype.project_work_milestones.project_work_milestones.generate_pwm",
+        "after_insert": [
+            "nirmaan_stack.nirmaan_stack.doctype.project_work_milestones.project_work_milestones.generate_pwm",
+            "nirmaan_stack.api.milestone.project_schedule.sync_project_schedule",
+        ],
         # "on_update": "nirmaan_stack.nirmaan_stack.doctype.project_work_milestones.project_work_milestones.edit_pwm",  # Commented out - PWM doctype no longer in use
+        # `sync_project_schedule` is invoked conditionally from inside
+        # `projects.on_update` (only when the project window changes), so we
+        # don't list it as a separate doc_event here.
         "on_update": "nirmaan_stack.nirmaan_stack.doctype.projects.projects.on_update"
     },
     "Vendors": {
@@ -170,6 +176,7 @@ doc_events = {
     },
     "Procurement Requests": {
         # "before_insert": "nirmaan_stack.integrations.controllers.procurement_requests.before_insert",
+        "validate": "nirmaan_stack.integrations.controllers.procurement_requests.validate",
         "after_insert": "nirmaan_stack.integrations.controllers.procurement_requests.after_insert",
         "on_update": "nirmaan_stack.integrations.controllers.procurement_requests.on_update",
         "on_trash": [
@@ -233,12 +240,9 @@ doc_events = {
     },
     "Internal Transfer Memo": {
         "validate": "nirmaan_stack.integrations.controllers.internal_transfer_memo.validate",
+        "after_insert": "nirmaan_stack.integrations.controllers.internal_transfer_memo.after_insert",
         "before_delete": "nirmaan_stack.integrations.controllers.internal_transfer_memo.before_delete",
         "on_update": "nirmaan_stack.integrations.controllers.internal_transfer_memo.on_update",
-    },
-    "Internal Transfer Request": {
-        "validate": "nirmaan_stack.integrations.controllers.internal_transfer_request.validate",
-        "after_insert": "nirmaan_stack.integrations.controllers.internal_transfer_request.after_insert",
     },
     "Category": {
         "after_rename": "nirmaan_stack.integrations.controllers.category.handle_category_rename"
@@ -264,7 +268,8 @@ scheduler_events = {
 	],
 	"cron": {
 		"30 4 * * *": [
-			"nirmaan_stack.tasks.vendor_credit_update.update_all_vendor_credits"
+			"nirmaan_stack.tasks.vendor_credit_update.update_all_vendor_credits",
+			"nirmaan_stack.tasks.project_cashflow_hold_update.update_projects_cashflow_hold"
 		]
 	}
 }
