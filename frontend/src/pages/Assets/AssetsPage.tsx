@@ -116,6 +116,22 @@ const AssetsPage: React.FC = () => {
     };
 
     const isAssetsTab = activeTab === 'project' || activeTab === 'it';
+    const addAssetType: AssetCategoryType = activeTab === 'it' ? 'IT' : 'Project';
+    const addAssetLabel = `Add New ${activeTab === 'it' ? 'IT' : 'Project'} Asset`;
+
+    // Auto-close the Add dialog if the user switches asset tabs while it's open —
+    // avoids the dialog showing the wrong type after a tab switch.
+    React.useEffect(() => {
+        if (addAssetDialogOpen) setAddAssetDialogOpen(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab]);
+
+    // Refetch summary counts on every tab switch — explicit user preference for
+    // freshness over instant display. SWR dedup window protects against double-fire.
+    React.useEffect(() => {
+        refreshSummaryCards();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab]);
 
     return (
         <div className="flex flex-col gap-3 sm:gap-4">
@@ -128,7 +144,7 @@ const AssetsPage: React.FC = () => {
                 </p>
             </div>
 
-            <AssetsSummaryCards />
+            <AssetsSummaryCards activeTab={activeTab} />
 
             <Tabs
                 value={activeTab}
@@ -170,7 +186,7 @@ const AssetsPage: React.FC = () => {
                                 className="gap-2"
                             >
                                 <Plus className="h-4 w-4" />
-                                <span className="hidden sm:inline">Add New Asset</span>
+                                <span className="hidden sm:inline">{addAssetLabel}</span>
                                 <span className="sm:hidden">Add</span>
                             </Button>
                         )}
@@ -227,6 +243,7 @@ const AssetsPage: React.FC = () => {
                 isOpen={addAssetDialogOpen}
                 onOpenChange={setAddAssetDialogOpen}
                 onAssetAdded={handleAssetAdded}
+                assetType={addAssetType}
             />
         </div>
     );

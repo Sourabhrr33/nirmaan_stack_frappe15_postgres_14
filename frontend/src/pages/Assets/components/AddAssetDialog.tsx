@@ -34,19 +34,24 @@ import {
     ASSET_CATEGORY_DOCTYPE,
     ASSET_CONDITION_OPTIONS,
     ASSET_CACHE_KEYS,
+    AssetCategoryType,
 } from '../assets.constants';
 
 interface AddAssetDialogProps {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     onAssetAdded?: () => void;
+    assetType: AssetCategoryType;
 }
 
 export const AddAssetDialog: React.FC<AddAssetDialogProps> = ({
     isOpen,
     onOpenChange,
     onAssetAdded,
+    assetType,
 }) => {
+    const isITAsset = assetType === 'IT';
+    const typeLabel = isITAsset ? 'IT Asset' : 'Project Asset';
     // Form state
     const [assetName, setAssetName] = useState('');
     const [assetDescription, setAssetDescription] = useState('');
@@ -72,7 +77,7 @@ export const AddAssetDialog: React.FC<AddAssetDialogProps> = ({
     const { data: categoryList, isLoading: categoriesLoading } = useFrappeGetDocList(
         ASSET_CATEGORY_DOCTYPE,
         {
-            fields: ['name', 'asset_category'],
+            fields: ['name', 'asset_category', 'category_type'],
             orderBy: { field: 'asset_category', order: 'asc' },
             limit: 0,
         },
@@ -80,11 +85,13 @@ export const AddAssetDialog: React.FC<AddAssetDialogProps> = ({
     );
 
     const categoryOptions = useMemo(() =>
-        categoryList?.map((cat: any) => ({
-            value: cat.name,
-            label: cat.asset_category,
-        })) || [],
-        [categoryList]
+        (categoryList || [])
+            .filter((cat: any) => cat.category_type === assetType)
+            .map((cat: any) => ({
+                value: cat.name,
+                label: cat.asset_category,
+            })),
+        [categoryList, assetType]
     );
 
     useEffect(() => {
@@ -112,6 +119,22 @@ export const AddAssetDialog: React.FC<AddAssetDialogProps> = ({
         setShowPin(false);
         setFormError(null);
     };
+
+    // Clear stale state if the dialog is open and asset type switches (e.g., user
+    // closes dialog with Project tab, switches to IT tab, reopens — selected category
+    // would be orphaned otherwise).
+    useEffect(() => {
+        if (!isOpen) return;
+        setSelectedCategory('');
+        if (!isITAsset) {
+            setAssetEmail('');
+            setAssetPassword('');
+            setAssetPin('');
+            setItDetailsOpen(false);
+            setShowPassword(false);
+            setShowPin(false);
+        }
+    }, [assetType, isOpen, isITAsset]);
 
     const handleDialogChange = (open: boolean) => {
         if (!open) resetForm();
@@ -141,9 +164,11 @@ export const AddAssetDialog: React.FC<AddAssetDialogProps> = ({
                 asset_condition: assetCondition || undefined,
                 asset_serial_number: serialNumber.trim() || undefined,
                 asset_value: assetValue ? parseFloat(assetValue) : undefined,
-                asset_email: assetEmail.trim() || undefined,
-                asset_email_password: assetPassword || undefined,
-                asset_pin: assetPin || undefined,
+                // Only persist IT credential fields for IT-type assets — the section
+                // is hidden for Project assets, so any residual state must not leak.
+                asset_email: isITAsset ? (assetEmail.trim() || undefined) : undefined,
+                asset_email_password: isITAsset ? (assetPassword || undefined) : undefined,
+                asset_pin: isITAsset ? (assetPin || undefined) : undefined,
             });
 
             toast({
@@ -169,10 +194,10 @@ export const AddAssetDialog: React.FC<AddAssetDialogProps> = ({
                         <Package className="h-6 w-6 text-emerald-600" />
                     </div>
                     <DialogTitle className="text-center text-lg font-semibold">
-                        Add New Asset
+                        Add New {typeLabel}
                     </DialogTitle>
                     <DialogDescription className="text-center text-sm text-gray-500">
-                        Register a new asset in the inventory.
+                        Register a new {typeLabel.toLowerCase()} in the inventory.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -277,7 +302,8 @@ export const AddAssetDialog: React.FC<AddAssetDialogProps> = ({
                         />
                     </div>
 
-                    {/* IT Asset Details - Collapsible */}
+                    {/* IT Asset Details - Collapsible (IT-type only) */}
+                    {isITAsset && (
                     <Collapsible open={itDetailsOpen} onOpenChange={setItDetailsOpen}>
                         <CollapsibleTrigger asChild>
                             <Button
@@ -372,6 +398,7 @@ export const AddAssetDialog: React.FC<AddAssetDialogProps> = ({
                             </div>
                         </CollapsibleContent>
                     </Collapsible>
+                    )}
 
                     {formError && (
                         <p className="text-sm text-red-600 text-center">{formError}</p>

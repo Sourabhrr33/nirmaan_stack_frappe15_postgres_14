@@ -90,12 +90,24 @@ export const DECLARATION_STATUS_OPTIONS = [
 
 // Centralized SWR cache keys for consistent cross-component invalidation
 export const ASSET_CACHE_KEYS = {
-    // Summary counts
+    // Summary counts (global — used by Categories tab)
     CATEGORIES_COUNT: `${ASSET_CATEGORY_DOCTYPE}_summary`,
     TOTAL_ASSETS_COUNT: `${ASSET_MASTER_DOCTYPE}_total_summary`,
     ASSIGNED_ASSETS_COUNT: `${ASSET_MASTER_DOCTYPE}_assigned_summary`,
     UNASSIGNED_ASSETS_COUNT: `${ASSET_MASTER_DOCTYPE}_unassigned_summary`,
     PENDING_DECLARATION_COUNT: `${ASSET_MANAGEMENT_DOCTYPE}_pending_summary`,
+
+    // Summary counts scoped to Project-type assets
+    PROJECT_TOTAL_ASSETS_COUNT: `${ASSET_MASTER_DOCTYPE}_total_summary_project`,
+    PROJECT_ASSIGNED_ASSETS_COUNT: `${ASSET_MASTER_DOCTYPE}_assigned_summary_project`,
+    PROJECT_UNASSIGNED_ASSETS_COUNT: `${ASSET_MASTER_DOCTYPE}_unassigned_summary_project`,
+    PROJECT_PENDING_DECLARATION_COUNT: `${ASSET_MANAGEMENT_DOCTYPE}_pending_summary_project`,
+
+    // Summary counts scoped to IT-type assets
+    IT_TOTAL_ASSETS_COUNT: `${ASSET_MASTER_DOCTYPE}_total_summary_it`,
+    IT_ASSIGNED_ASSETS_COUNT: `${ASSET_MASTER_DOCTYPE}_assigned_summary_it`,
+    IT_UNASSIGNED_ASSETS_COUNT: `${ASSET_MASTER_DOCTYPE}_unassigned_summary_it`,
+    IT_PENDING_DECLARATION_COUNT: `${ASSET_MANAGEMENT_DOCTYPE}_pending_summary_it`,
 
     // Category dropdowns (shared across all dialogs)
     CATEGORIES_DROPDOWN: `${ASSET_CATEGORY_DOCTYPE}_dropdown`,

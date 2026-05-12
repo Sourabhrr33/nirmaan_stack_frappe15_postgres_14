@@ -269,6 +269,28 @@ const AssetOverviewContent: React.FC<{ assetId: string }> = ({ assetId }) => {
         return t === 'Project' || t === 'IT' ? t : null;
     }, [asset?.asset_category, categoryList]);
 
+    // For the Edit dialog: derive type from the *currently selected* category in
+    // the form (not the saved asset) so switching Project ↔ IT in the dropdown
+    // shows/hides the IT Credentials section live.
+    const editingCategoryType: AssetCategoryType | null = useMemo(() => {
+        if (!editForm.asset_category || !categoryList) return null;
+        const match = (categoryList as any[]).find((c) => c.name === editForm.asset_category);
+        const t = match?.category_type;
+        return t === 'Project' || t === 'IT' ? t : null;
+    }, [editForm.asset_category, categoryList]);
+
+    // Hide IT Credentials only when we're *certain* the category is Project. During
+    // the brief categoryList fetch (currentCategoryType === null) we keep the card
+    // visible to avoid a false-hide flash on IT assets.
+    const showITCredentialsCard = currentCategoryType !== 'Project';
+    const showITCredentialsInEditDialog = editingCategoryType !== 'Project';
+    const editDialogTitle =
+        editingCategoryType === 'Project'
+            ? 'Edit Project Asset'
+            : editingCategoryType === 'IT'
+                ? 'Edit IT Asset'
+                : 'Edit Asset';
+
     const { updateDoc, loading: isUpdating } = useFrappeUpdateDoc();
     const { upload } = useFrappeFileUpload();
 
@@ -322,15 +344,19 @@ const AssetOverviewContent: React.FC<{ assetId: string }> = ({ assetId }) => {
                 asset_condition: editForm.asset_condition || null,
                 asset_serial_number: editForm.asset_serial_number.trim() || null,
                 asset_value: editForm.asset_value ? parseFloat(editForm.asset_value) : null,
-                asset_email: editForm.asset_email.trim() || null,
             };
 
-            // Only update password/pin if provided
-            if (editForm.asset_email_password) {
-                updateData.asset_email_password = editForm.asset_email_password;
-            }
-            if (editForm.asset_pin) {
-                updateData.asset_pin = editForm.asset_pin;
+            // IT credential fields only persist when the (selected) category is IT —
+            // matches the visible form. For a Project asset, email/password/pin are
+            // never sent so we don't accidentally clear stored values nor leak state.
+            if (showITCredentialsInEditDialog) {
+                updateData.asset_email = editForm.asset_email.trim() || null;
+                if (editForm.asset_email_password) {
+                    updateData.asset_email_password = editForm.asset_email_password;
+                }
+                if (editForm.asset_pin) {
+                    updateData.asset_pin = editForm.asset_pin;
+                }
             }
 
             await updateDoc(ASSET_MASTER_DOCTYPE, assetId, updateData);
@@ -512,8 +538,8 @@ const AssetOverviewContent: React.FC<{ assetId: string }> = ({ assetId }) => {
                 </div>
             ) : (
                 <div className="grid gap-6 md:grid-cols-2">
-                    {/* Asset Details Card */}
-                    <Card>
+                    {/* Asset Details Card - spans full row for Project assets (no IT card) */}
+                    <Card className={showITCredentialsCard ? undefined : 'md:col-span-2'}>
                         <CardHeader className="pb-4">
                             <CardTitle className="text-base font-medium">Asset Details</CardTitle>
                         </CardHeader>
@@ -592,7 +618,8 @@ const AssetOverviewContent: React.FC<{ assetId: string }> = ({ assetId }) => {
                         </CardContent>
                     </Card>
 
-                    {/* IT Details Card */}
+                    {/* IT Details Card - hidden for Project-type assets */}
+                    {showITCredentialsCard && (
                     <Card>
                         <CardHeader className="pb-4">
                             <CardTitle className="text-base font-medium">IT Credentials</CardTitle>
@@ -682,6 +709,7 @@ const AssetOverviewContent: React.FC<{ assetId: string }> = ({ assetId }) => {
                             </div>
                         </CardContent>
                     </Card>
+                    )}
 
                     {/* Assignment Card - Full Width */}
                     <Card className="md:col-span-2">
@@ -759,9 +787,9 @@ const AssetOverviewContent: React.FC<{ assetId: string }> = ({ assetId }) => {
             <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
                 <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Edit Asset</DialogTitle>
+                        <DialogTitle>{editDialogTitle}</DialogTitle>
                         <DialogDescription>
-                            Update asset information. Leave password/PIN blank to keep unchanged.
+                            Update asset information.{showITCredentialsInEditDialog ? ' Leave password/PIN blank to keep unchanged.' : ''}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -847,7 +875,8 @@ const AssetOverviewContent: React.FC<{ assetId: string }> = ({ assetId }) => {
                             />
                         </div>
 
-                        {/* IT Details Section */}
+                        {/* IT Details Section - hidden when the (selected) category is Project */}
+                        {showITCredentialsInEditDialog && (
                         <div className="pt-4 border-t">
                             <p className="text-sm font-medium text-gray-700 mb-3">IT Credentials</p>
 
@@ -911,6 +940,7 @@ const AssetOverviewContent: React.FC<{ assetId: string }> = ({ assetId }) => {
                                 </div>
                             </div>
                         </div>
+                        )}
                     </div>
 
                     <DialogFooter>
