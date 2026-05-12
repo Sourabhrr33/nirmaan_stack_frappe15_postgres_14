@@ -24,7 +24,7 @@ def execute():
 			["project_value", "is", "set"],
 			["project_value", "!=", "0"],
 		],
-		fields=["name", "project_value", "cashflow_gap_limited"],
+		fields=["name", "project_value_gst", "cashflow_gap_limited"],
 	)
 
 	updated = 0
@@ -32,11 +32,11 @@ def execute():
 		if flt(p.cashflow_gap_limited) > 0:
 			continue
 
-		project_value = flt(p.project_value)
-		if project_value <= 0:
+		project_value_gst = flt(p.project_value_gst)
+		if project_value_gst <= 0:
 			continue
 
-		new_limit = project_value * 0.20
+		new_limit = project_value_gst * 0.20
 		frappe.db.set_value(
 			"Projects",
 			p.name,
