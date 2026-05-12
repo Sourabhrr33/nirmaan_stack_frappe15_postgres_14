@@ -183,6 +183,7 @@ export const CustomItemDialog: React.FC<CustomItemDialogProps> = ({
 export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess }) => {
     const [open, setOpen] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [fileError, setFileError] = useState<string | null>(null);
     const [isCustomMake, setIsCustomMake] = useState(false);
     const [customMake, setCustomMake] = useState("");
     const [customItemDialogOpen, setCustomItemDialogOpen] = useState(false);
@@ -273,6 +274,7 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
         if (!open) {
             form.reset();
             setSelectedFile(null);
+            setFileError(null);
             setIsCustomMake(false);
             setCustomMake("");
             setIsCustomItem(false);
@@ -341,6 +343,10 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
     };
 
     const onSubmit = async (values: TDSItemValues) => {
+        if (!selectedFile) {
+            setFileError("Attachment is required");
+            return;
+        }
         try {
             const docData: any = {
                 work_package: values.work_package,
@@ -379,6 +385,7 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
 
             form.reset();
             setSelectedFile(null);
+            setFileError(null);
             setOpen(false);
             toast({ title: "Success", description: "TDS Item created successfully" });
             onSuccess();
@@ -678,16 +685,22 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
                             {/* Attach Document */}
                             <div className="space-y-1.5">
                                 <label className="text-sm font-semibold">
-                                    Attach Document <span className="text-gray-400 font-normal ml-1">(Optional)</span>
+                                    Attach Document<span className="text-red-500 ml-0.5">*</span>
                                 </label>
                                 <CustomAttachment
                                     maxFileSize={50 * 1024 * 1024}
                                     selectedFile={selectedFile}
-                                    onFileSelect={setSelectedFile}
+                                    onFileSelect={(file) => {
+                                        setSelectedFile(file);
+                                        if (file) setFileError(null);
+                                    }}
                                     acceptedTypes="application/pdf"
                                     label="Upload PDF Document"
                                     className="w-full"
-                                />               
+                                />
+                                {fileError && (
+                                    <p className="text-xs font-medium text-red-500">{fileError}</p>
+                                )}
                             </div>
 
                             <DialogFooter className="pt-4 border-t border-gray-100 gap-2 sm:gap-0">

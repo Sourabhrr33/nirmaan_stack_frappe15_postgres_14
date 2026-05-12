@@ -28,6 +28,7 @@ interface EditTDSItemDialogProps {
 
 export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOpenChange, item, onSuccess }) => {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [fileError, setFileError] = useState<string | null>(null);
     const [isCustomMake, setIsCustomMake] = useState(false);
     const [customMake, setCustomMake] = useState("");
     const [customItemName, setCustomItemName] = useState("");
@@ -85,6 +86,7 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
                 status: (item.status === "Verified" ? "Verified" : "Not Verified"),
             });
             setSelectedFile(null);
+            setFileError(null);
             setCustomItemName(item.tds_item_name || "");
             setShowItemDropdown(false); // Reset to custom input mode for custom items
             previousItemIdRef.current = item.tds_item_id || "";
@@ -143,6 +145,11 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
 
     const onSubmit = async (values: TDSItemValues) => {
         if (!item) return;
+
+        if (!selectedFile && !item.tds_attachment) {
+            setFileError("Attachment is required");
+            return;
+        }
 
         try {
             const updatePayload: any = {
@@ -457,7 +464,7 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
                             {/* Attach Document */}
                             <div className="space-y-1.5">
                                 <label className="text-sm font-semibold">
-                                    Attach Document <span className="text-gray-400 font-normal ml-1">(Optional)</span>
+                                    Attach Document<span className="text-red-500 ml-0.5">*</span>
                                 </label>
                                 {item?.tds_attachment && !selectedFile && (
                                     <div className="text-xs text-gray-500 mb-2">
@@ -467,11 +474,17 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
                                 <CustomAttachment
                                     maxFileSize={50 * 1024 * 1024}
                                     selectedFile={selectedFile}
-                                    onFileSelect={setSelectedFile}
+                                    onFileSelect={(file) => {
+                                        setSelectedFile(file);
+                                        if (file) setFileError(null);
+                                    }}
                                     acceptedTypes="application/pdf"
                                     label={item?.tds_attachment ? "Replace Document" : "Upload PDF Document"}
                                     className="w-full"
                                 />
+                                {fileError && (
+                                    <p className="text-xs font-medium text-red-500">{fileError}</p>
+                                )}
                             </div>
 
                             <DialogFooter className="pt-4 border-t border-gray-100 gap-2 sm:gap-0">
