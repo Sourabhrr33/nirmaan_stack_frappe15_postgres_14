@@ -23,6 +23,7 @@ import RSelect, { components as RSComponents, MenuListProps } from "react-select
 import { CustomAttachment } from "@/components/helpers/CustomAttachment";
 import { useTDSItemOptions } from "@/pages/tds/hooks/useTDSItemOptions";
 import { CustomItemDialog } from "@/pages/tds/components/AddTDSItemDialog";
+import { useUserData } from "@/hooks/useUserData";
 
 const formSchema = z.object({
     work_package: z.string().min(1, "Work Package is required"),
@@ -42,12 +43,15 @@ interface RequestTdsItemDialogProps {
 }
 
 export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open, onOpenChange, onAddItem }) => {
+    const { role } = useUserData();
+    const canCreateCustomItem = role === "Nirmaan Admin Profile";
     const [isCustomMake, setIsCustomMake] = useState(false);
     const [customMake, setCustomMake] = useState("");
     const [customItemDialogOpen, setCustomItemDialogOpen] = useState(false);
     const [isCustomItem, setIsCustomItem] = useState(false);
     const [customItemName, setCustomItemName] = useState("");
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [fileError, setFileError] = useState<string | null>(null);
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -67,9 +71,9 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
     const selectedCategory = useWatch({ control: form.control, name: "category" });
     const watchedTdsItemId = useWatch({ control: form.control, name: "tds_item_id" });
 
-    const { 
-        wpOptions, 
-        catOptions, 
+    const {
+        wpOptions,
+        catOptions,
         itemOptionsForWP,
         makeOptions,
         allCustomItems,
@@ -78,7 +82,8 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
     } = useTDSItemOptions({
         selectedWP,
         selectedCategory,
-        watchedTdsItemId
+        watchedTdsItemId,
+        billableOnly: true,
     });
 
     const itemOptionsWithCustom = useMemo(() => {
@@ -135,8 +140,8 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
         if (itemInfo) {
             form.setValue("category", itemInfo.category);
             if (itemInfo.workPackage && itemInfo.workPackage !== form.getValues("work_package")) {
-                 prevWPRef.current = itemInfo.workPackage;
-                 form.setValue("work_package", itemInfo.workPackage);
+                prevWPRef.current = itemInfo.workPackage;
+                form.setValue("work_package", itemInfo.workPackage);
             }
         }
 
@@ -162,7 +167,7 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
             form.setValue("tds_item_name", item.name);
             form.setValue("is_custom_item", item.id.startsWith("CUS-"));
             form.setValue("category", item.category);
-            
+
             if (item.workPackage) {
                 if (item.workPackage !== form.getValues("work_package")) {
                     prevWPRef.current = item.workPackage;
@@ -184,6 +189,10 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
     };
 
     const onSubmit = (values: z.infer<typeof formSchema>) => {
+        if (!selectedFile) {
+            setFileError("Attachment is required");
+            return;
+        }
         onAddItem({
             tds_item_name: values.tds_item_name,
             tds_item_id: values.tds_item_id,
@@ -202,6 +211,7 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
         setIsCustomItem(false);
         setCustomItemName("");
         setSelectedFile(null);
+        setFileError(null);
     };
 
     const handleCancel = () => {
@@ -212,6 +222,7 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
         setIsCustomItem(false);
         setCustomItemName("");
         setSelectedFile(null);
+        setFileError(null);
     };
 
     return (
@@ -286,17 +297,19 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
                                                                 <RSComponents.MenuList {...props}>
                                                                     {props.children}
                                                                 </RSComponents.MenuList>
-                                                                <button
-                                                                    type="button"
-                                                                    onMouseDown={(e) => {
-                                                                        e.preventDefault();
-                                                                        e.stopPropagation();
-                                                                        handleItemChange({ value: "__custom__" });
-                                                                    }}
-                                                                    className="w-full text-left px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border-t border-gray-200 sticky bottom-0"
-                                                                >
-                                                                    + Custom Item
-                                                                </button>
+                                                                {canCreateCustomItem && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onMouseDown={(e) => {
+                                                                            e.preventDefault();
+                                                                            e.stopPropagation();
+                                                                            handleItemChange({ value: "__custom__" });
+                                                                        }}
+                                                                        className="w-full text-left px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border-t border-gray-200 sticky bottom-0"
+                                                                    >
+                                                                        + Custom Item
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         ),
                                                     }}
@@ -453,15 +466,21 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
 
                             {/* Attach Document */}
                             <div className="space-y-1.5 mt-2">
-                                <FormLabel className="text-sm font-bold text-gray-700 tracking-tight">Attach Document <span className="text-gray-400 font-normal ml-0.5">(Optional)</span></FormLabel>
+                                <FormLabel className="text-sm font-bold text-gray-700 tracking-tight">Attach Document<span className="text-red-500 ml-0.5">*</span></FormLabel>
                                 <CustomAttachment
                                     selectedFile={selectedFile}
-                                    onFileSelect={setSelectedFile}
+                                    onFileSelect={(file) => {
+                                        setSelectedFile(file);
+                                        if (file) setFileError(null);
+                                    }}
                                     acceptedTypes="application/pdf"
                                     label="Upload PDF Document"
                                     maxFileSize={50 * 1024 * 1024}
                                     className="w-full"
                                 />
+                                {fileError && (
+                                    <p className="text-xs font-medium text-red-500">{fileError}</p>
+                                )}
                             </div>
 
                             <div className="flex bg-gray-50 -mx-6 -mb-6 p-4 px-6 border-t border-gray-100 gap-3 justify-end items-center mt-6">
@@ -477,15 +496,17 @@ export const RequestTdsItemDialog: React.FC<RequestTdsItemDialogProps> = ({ open
                 </div>
             </DialogContent>
 
-            <CustomItemDialog
-                open={customItemDialogOpen}
-                onClose={() => setCustomItemDialogOpen(false)}
-                onSelect={handleCustomItemSelect}
-                allCustomItems={allCustomItems}
-                standardItems={itemOptionsForWP}
-                catList={catList || []}
-                hideMatches
-            />
+            {canCreateCustomItem && (
+                <CustomItemDialog
+                    open={customItemDialogOpen}
+                    onClose={() => setCustomItemDialogOpen(false)}
+                    onSelect={handleCustomItemSelect}
+                    allCustomItems={allCustomItems}
+                    standardItems={itemOptionsForWP}
+                    catList={catList || []}
+                    hideMatches
+                />
+            )}
         </Dialog>
     );
 };

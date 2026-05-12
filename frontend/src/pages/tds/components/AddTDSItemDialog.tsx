@@ -19,7 +19,7 @@ import { CustomAttachment } from "@/components/helpers/CustomAttachment";
 import { useFrappeCreateDoc, useFrappeFileUpload, useFrappeUpdateDoc } from "frappe-react-sdk";
 import RSelect, { components as RSComponents, MenuListProps } from "react-select";
 import { toast } from "@/components/ui/use-toast";
-import { TDSItemValues, tdsItemSchema } from "./types";
+import { TDSItemValues, tdsItemSchema, TDS_STATUS_OPTIONS } from "./types";
 import { useTDSItemOptions } from "../hooks/useTDSItemOptions";
 
 interface AddTDSItemDialogProps {
@@ -203,6 +203,7 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
             is_custom_item: false,
             item_description: "",
             make: "",
+            status: "Not Verified",
         },
     });
 
@@ -346,6 +347,7 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
                 category: values.category,
                 description: values.item_description,
                 make: values.make,
+                status: values.status,
             };
 
             // If custom item, send tds_item_name (backend will generate ID)
@@ -626,6 +628,30 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
                                                     )}
                                                 />
                                             )}
+                                        </FormControl>
+                                        <FormMessage className="text-xs" />
+                                    </FormItem>
+                                )}
+                            />
+
+                            {/* Status */}
+                            <FormField
+                                control={form.control}
+                                name="status"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel className="text-sm font-semibold flex items-center">
+                                            Status<span className="text-red-500 ml-0.5">*</span>
+                                        </FormLabel>
+                                        <FormControl>
+                                            <RSelect
+                                                options={TDS_STATUS_OPTIONS.map(s => ({ label: s, value: s }))}
+                                                value={field.value ? { label: field.value, value: field.value } : null}
+                                                onChange={(opt) => field.onChange(opt?.value)}
+                                                placeholder="Select Status"
+                                                className="react-select-container"
+                                                classNamePrefix="react-select"
+                                            />
                                         </FormControl>
                                         <FormMessage className="text-xs" />
                                     </FormItem>

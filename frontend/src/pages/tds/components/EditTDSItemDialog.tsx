@@ -15,7 +15,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useFrappeFileUpload, useFrappeUpdateDoc } from "frappe-react-sdk";
 import RSelect from "react-select";
 import { toast } from "@/components/ui/use-toast";
-import { TDSItem, TDSItemValues, tdsItemSchema } from "./types";
+import { TDSItem, TDSItemValues, tdsItemSchema, TDS_STATUS_OPTIONS } from "./types";
 import { useTDSItemOptions } from "../hooks/useTDSItemOptions";
 import { CustomAttachment } from "@/components/helpers/CustomAttachment";
 
@@ -49,6 +49,7 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
             is_custom_item: false,
             item_description: "",
             make: "",
+            status: "Not Verified",
         },
     });
 
@@ -76,11 +77,12 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
             form.reset({
                 work_package: item.work_package,
                 category: item.category,
-                tds_item_id: item.tds_item_id || "", 
+                tds_item_id: item.tds_item_id || "",
                 tds_item_name: item.tds_item_name || "",
                 is_custom_item: item.tds_item_id?.startsWith("CUS-") || false,
                 item_description: item.description,
                 make: item.make,
+                status: (item.status === "Verified" ? "Verified" : "Not Verified"),
             });
             setSelectedFile(null);
             setCustomItemName(item.tds_item_name || "");
@@ -149,6 +151,7 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
                 tds_item_id: values.tds_item_id,
                 description: values.item_description,
                 make: values.make,
+                status: values.status,
             };
 
             // Always update tds_item_name for display
@@ -404,6 +407,30 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
                                                     )}
                                                 />
                                             )}
+                                        </FormControl>
+                                        <FormMessage className="text-xs" />
+                                    </FormItem>
+                                )}
+                            />
+
+                            {/* Status */}
+                            <FormField
+                                control={form.control}
+                                name="status"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel className="text-sm font-semibold flex items-center">
+                                            Status<span className="text-red-500 ml-0.5">*</span>
+                                        </FormLabel>
+                                        <FormControl>
+                                            <RSelect
+                                                options={TDS_STATUS_OPTIONS.map(s => ({ label: s, value: s }))}
+                                                value={field.value ? { label: field.value, value: field.value } : null}
+                                                onChange={(opt) => field.onChange(opt?.value)}
+                                                placeholder="Select Status"
+                                                className="react-select-container"
+                                                classNamePrefix="react-select"
+                                            />
                                         </FormControl>
                                         <FormMessage className="text-xs" />
                                     </FormItem>
