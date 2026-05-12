@@ -76,9 +76,11 @@ export const useTDSItemOptions = ({ selectedWP, selectedCategory, watchedTdsItem
             catList.filter(c => c.work_package === selectedWP).map(c => c.name)
         );
 
-        // Get items belonging to those categories
+        // Get items belonging to those categories. When the form has Category
+        // chosen before Item Name (new field order), narrow further to that category.
         return itemList
             .filter(d => wpCategories.has(d.category))
+            .filter(d => !selectedCategory || d.category === selectedCategory)
             .filter(d => !billableOnly || d.billing_category === "Billable")
             .map(d => {
                 const category = catList.find(c => c.name === d.category);
@@ -89,7 +91,7 @@ export const useTDSItemOptions = ({ selectedWP, selectedCategory, watchedTdsItem
                     categoryName: category?.category_name || d.category
                 };
             });
-    }, [itemList, catList, selectedWP, billableOnly]);
+    }, [itemList, catList, selectedWP, selectedCategory, billableOnly]);
 
     // 4. Item Options filtered by Category (OLD: for backwards compatibility)
     const itemOptions = useMemo(() => {

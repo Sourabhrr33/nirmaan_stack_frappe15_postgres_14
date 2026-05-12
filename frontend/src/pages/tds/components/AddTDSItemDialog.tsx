@@ -21,6 +21,30 @@ import RSelect, { components as RSComponents, MenuListProps } from "react-select
 import { toast } from "@/components/ui/use-toast";
 import { TDSItemValues, tdsItemSchema, TDS_STATUS_OPTIONS } from "./types";
 import { useTDSItemOptions } from "../hooks/useTDSItemOptions";
+import { FuzzySearchSelect } from "@/components/ui/fuzzy-search-select";
+
+// Custom MenuList for the Item Name dropdown — renders the standard MenuList
+// plus a sticky "+ Custom Item" footer that opens the CustomItemDialog.
+const AddItemMenuList = (props: MenuListProps<any, false>) => {
+    const onAdd = (props as any).onAdd;
+    return (
+        <div>
+            <RSComponents.MenuList {...props}>{props.children}</RSComponents.MenuList>
+            <button
+                type="button"
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onAdd?.();
+                    (props.selectProps as any).onMenuClose?.();
+                }}
+                className="w-full text-left px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border-t border-gray-200 sticky bottom-0"
+            >
+                + Custom Item
+            </button>
+        </div>
+    );
+};
 
 interface AddTDSItemDialogProps {
     onSuccess: () => void;
@@ -454,7 +478,35 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
                                 )}
                             />
 
-                            {/* Item Name (NEW ORDER: after WP, before Category) */}
+                            {/* Category */}
+                            <FormField
+                                control={form.control}
+                                name="category"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel className="text-sm font-semibold flex items-center">
+                                            Category<span className="text-red-500 ml-0.5">*</span>
+                                            {!isCustomItem && watchedTdsItemId && selectedCategory && (
+                                                <span className="text-xs text-gray-400 ml-2">(auto-filled)</span>
+                                            )}
+                                        </FormLabel>
+                                        <FormControl>
+                                            <RSelect
+                                                options={catOptions}
+                                                value={catOptions.find(opt => opt.value === field.value) || null}
+                                                onChange={(opt) => field.onChange(opt?.value)}
+                                                placeholder="Select Category"
+                                                className="react-select-container"
+                                                classNamePrefix="react-select"
+                                                isDisabled={!selectedWP || (!isCustomItem && !!watchedTdsItemId)}
+                                            />
+                                        </FormControl>
+                                        <FormMessage className="text-xs" />
+                                    </FormItem>
+                                )}
+                            />
+
+                            {/* Item Name */}
                             <FormField
                                 control={form.control}
                                 name="tds_item_id"
@@ -485,34 +537,26 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
                                                     </Button>
                                                 </div>
                                             ) : (
-                                                <RSelect
-                                                    options={itemOptionsWithCustom}
+                                                <FuzzySearchSelect
+                                                    allOptions={itemOptionsWithCustom}
+                                                    tokenSearchConfig={{
+                                                        searchFields: ['label', 'value', 'categoryName'],
+                                                        minSearchLength: 1,
+                                                        partialMatch: true,
+                                                        minTokenLength: 1,
+                                                        fieldWeights: { label: 2.0, value: 1.5, categoryName: 1.0 },
+                                                        minTokenMatches: 1,
+                                                    }}
                                                     value={getItemDisplayValue()}
-                                                    onChange={handleItemChange}
-                                                    placeholder="Select Item"
+                                                    onChange={handleItemChange as any}
+                                                    placeholder="Search Item Name..."
                                                     className="react-select-container"
                                                     classNamePrefix="react-select"
                                                     isDisabled={!selectedWP}
-                                                    components={{
-                                                        MenuList: (props: MenuListProps<any, false>) => (
-                                                            <div>
-                                                                <RSComponents.MenuList {...props}>
-                                                                    {props.children}
-                                                                </RSComponents.MenuList>
-                                                                <button
-                                                                    type="button"
-                                                                    onMouseDown={(e) => {
-                                                                        e.preventDefault();
-                                                                        e.stopPropagation();
-                                                                        handleItemChange({ value: "__custom__" });
-                                                                        (props.selectProps as any).onMenuClose?.();
-                                                                    }}
-                                                                    className="w-full text-left px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border-t border-gray-200 sticky bottom-0"
-                                                                >
-                                                                    + Custom Item
-                                                                </button>
-                                                            </div>
-                                                        ),
+                                                    isClearable
+                                                    customMenuListComponent={AddItemMenuList as any}
+                                                    customMenuListProps={{
+                                                        onAdd: () => handleItemChange({ value: "__custom__" }),
                                                     }}
                                                     formatOptionLabel={(option: any) => (
                                                         <span>
@@ -524,34 +568,6 @@ export const AddTDSItemDialog: React.FC<AddTDSItemDialogProps> = ({ onSuccess })
                                                     )}
                                                 />
                                             )}
-                                        </FormControl>
-                                        <FormMessage className="text-xs" />
-                                    </FormItem>
-                                )}
-                            />
-
-                            {/* Category (AUTO-FILLED when item selected) */}
-                            <FormField
-                                control={form.control}
-                                name="category"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel className="text-sm font-semibold flex items-center">
-                                            Category<span className="text-red-500 ml-0.5">*</span>
-                                            {!isCustomItem && selectedCategory && (
-                                                <span className="text-xs text-gray-400 ml-2">(auto-filled)</span>
-                                            )}
-                                        </FormLabel>
-                                        <FormControl>
-                                            <RSelect
-                                                options={catOptions}
-                                                value={catOptions.find(opt => opt.value === field.value) || null}
-                                                onChange={(opt) => field.onChange(opt?.value)}
-                                                placeholder={isCustomItem ? "Select Category" : "Auto-filled from item"}
-                                                className="react-select-container"
-                                                classNamePrefix="react-select"
-                                                isDisabled={!isCustomItem && !!selectedCategory}
-                                            />
                                         </FormControl>
                                         <FormMessage className="text-xs" />
                                     </FormItem>

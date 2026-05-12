@@ -18,6 +18,7 @@ import { toast } from "@/components/ui/use-toast";
 import { TDSItem, TDSItemValues, tdsItemSchema, TDS_STATUS_OPTIONS } from "./types";
 import { useTDSItemOptions } from "../hooks/useTDSItemOptions";
 import { CustomAttachment } from "@/components/helpers/CustomAttachment";
+import { FuzzySearchSelect } from "@/components/ui/fuzzy-search-select";
 
 interface EditTDSItemDialogProps {
     open: boolean;
@@ -58,11 +59,11 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
     const watchedTdsItemId = form.watch("tds_item_id");
     const selectedWP = form.watch("work_package");
 
-    const { 
-        wpOptions, 
-        catOptions, 
-        itemOptions, 
-        makeOptions 
+    const {
+        wpOptions,
+        catOptions,
+        itemOptionsForWP,
+        makeOptions
     } = useTDSItemOptions({
         selectedWP,
         selectedCategory,
@@ -168,7 +169,7 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
                 updatePayload.tds_item_name = customItemName || values.tds_item_name;
             } else {
                 // Standard items OR user switched from custom to standard
-                const selectedItem = itemOptions.find(opt => opt.value === values.tds_item_id);
+                const selectedItem = itemOptionsForWP.find(opt => opt.value === values.tds_item_id);
                 updatePayload.tds_item_name = selectedItem?.label || values.tds_item_name;
             }
 
@@ -241,6 +242,31 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
                                 )}
                             />
 
+                            {/* Category - Editable for custom items */}
+                            <FormField
+                                control={form.control}
+                                name="category"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel className="text-sm font-semibold flex items-center">
+                                            Category<span className="text-red-500 ml-0.5">*</span>
+                                        </FormLabel>
+                                        <FormControl>
+                                            <RSelect
+                                                options={catOptions}
+                                                value={catOptions.find(opt => opt.value === field.value) || null}
+                                                onChange={(opt) => field.onChange(opt?.value)}
+                                                placeholder="Select product category"
+                                                className="react-select-container"
+                                                classNamePrefix="react-select"
+                                                isDisabled={!isOriginalCustomItem}
+                                            />
+                                        </FormControl>
+                                        <FormMessage className="text-xs" />
+                                    </FormItem>
+                                )}
+                            />
+
                             {/* Item Name - Different UI for custom vs standard */}
                             <FormField
                                 control={form.control}
@@ -277,16 +303,25 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
                                             ) : (
                                                 // Standard item or switched to dropdown: Show dropdown
                                                 <div className="space-y-2">
-                                                    <RSelect
-                                                        options={itemOptions}
-                                                        value={itemOptions.find(opt => opt.value === field.value) || null}
-                                                        onChange={(opt) => {
+                                                    <FuzzySearchSelect
+                                                        allOptions={itemOptionsForWP}
+                                                        tokenSearchConfig={{
+                                                            searchFields: ['label', 'value', 'categoryName'],
+                                                            minSearchLength: 1,
+                                                            partialMatch: true,
+                                                            minTokenLength: 1,
+                                                            fieldWeights: { label: 2.0, value: 1.5, categoryName: 1.0 },
+                                                            minTokenMatches: 1,
+                                                        }}
+                                                        value={itemOptionsForWP.find(opt => opt.value === field.value) || null}
+                                                        onChange={(opt: any) => {
                                                             field.onChange(opt?.value);
                                                             form.setValue("tds_item_name", opt?.label || "");
                                                         }}
-                                                        placeholder="Select Item"
+                                                        placeholder="Search Item Name..."
                                                         className="react-select-container"
                                                         classNamePrefix="react-select"
+                                                        isClearable
                                                     />
                                                     {isOriginalCustomItem && showItemDropdown && (
                                                         <Button
@@ -307,31 +342,6 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
                                                     )}
                                                 </div>
                                             )}
-                                        </FormControl>
-                                        <FormMessage className="text-xs" />
-                                    </FormItem>
-                                )}
-                            />
-
-                            {/* Category - Editable for custom items */}
-                            <FormField
-                                control={form.control}
-                                name="category"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel className="text-sm font-semibold flex items-center">
-                                            Category<span className="text-red-500 ml-0.5">*</span>
-                                        </FormLabel>
-                                        <FormControl>
-                                            <RSelect
-                                                options={catOptions}
-                                                value={catOptions.find(opt => opt.value === field.value) || null}
-                                                onChange={(opt) => field.onChange(opt?.value)}
-                                                placeholder="Select product category"
-                                                className="react-select-container"
-                                                classNamePrefix="react-select"
-                                                isDisabled={!isOriginalCustomItem}
-                                            />
                                         </FormControl>
                                         <FormMessage className="text-xs" />
                                     </FormItem>
@@ -462,30 +472,37 @@ export const EditTDSItemDialog: React.FC<EditTDSItemDialogProps> = ({ open, onOp
                             />
 
                             {/* Attach Document */}
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-semibold">
-                                    Attach Document<span className="text-red-500 ml-0.5">*</span>
-                                </label>
-                                {item?.tds_attachment && !selectedFile && (
-                                    <div className="text-xs text-gray-500 mb-2">
-                                        Current: <a href={item.tds_attachment} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{item.tds_attachment.split('/').pop()}</a>
+                            {(() => {
+                                const hasExistingDoc = !!item?.tds_attachment;
+                                const attachmentLabel = hasExistingDoc ? "Replace Document" : "Upload PDF Document";
+                                return (
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-semibold">
+                                            Attach Document<span className="text-red-500 ml-0.5">*</span>
+                                        </label>
+                                        {hasExistingDoc && !selectedFile && (
+                                            <p className="text-[10px] text-gray-500 flex items-center gap-1 px-1 mb-2">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                Current file: <a href={item!.tds_attachment} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View Document</a>
+                                            </p>
+                                        )}
+                                        <CustomAttachment
+                                            maxFileSize={50 * 1024 * 1024}
+                                            selectedFile={selectedFile}
+                                            onFileSelect={(file) => {
+                                                setSelectedFile(file);
+                                                if (file) setFileError(null);
+                                            }}
+                                            acceptedTypes="application/pdf"
+                                            label={attachmentLabel}
+                                            className="w-full"
+                                        />
+                                        {fileError && (
+                                            <p className="text-xs font-medium text-red-500">{fileError}</p>
+                                        )}
                                     </div>
-                                )}
-                                <CustomAttachment
-                                    maxFileSize={50 * 1024 * 1024}
-                                    selectedFile={selectedFile}
-                                    onFileSelect={(file) => {
-                                        setSelectedFile(file);
-                                        if (file) setFileError(null);
-                                    }}
-                                    acceptedTypes="application/pdf"
-                                    label={item?.tds_attachment ? "Replace Document" : "Upload PDF Document"}
-                                    className="w-full"
-                                />
-                                {fileError && (
-                                    <p className="text-xs font-medium text-red-500">{fileError}</p>
-                                )}
-                            </div>
+                                );
+                            })()}
 
                             <DialogFooter className="pt-4 border-t border-gray-100 gap-2 sm:gap-0">
                                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100">
