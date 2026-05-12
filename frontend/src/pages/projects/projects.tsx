@@ -33,7 +33,6 @@ import { useFacetValues } from "@/hooks/useFacetValues";
 import { useUserData } from "@/hooks/useUserData";
 import { useCEOHoldProjects } from "@/hooks/useCEOHoldProjects";
 import { CEO_HOLD_ROW_CLASSES } from "@/utils/ceoHoldRowStyles";
-import { CEO_HOLD_AUTHORIZED_USER } from "@/constants/ceoHold";
 import { formatDate } from "@/utils/FormatDate";
 import { formatToApproxLakhs, formatToLakhsNumber } from "@/utils/FormatPrice";
 import {
@@ -72,6 +71,12 @@ import {
 import { useProjectAllCredits } from "./hooks/useProjectAllCredits";
 // --- Constants ---
 const DOCTYPE = "Projects";
+
+// Summary pills shown for every role. Visibility of the *count* is separate
+// from authorization to set/unset CEO Hold (backend-enforced for nitesh@nirmaan.app).
+const PROJECT_STATUS_OPTIONS = ["WIP", "Completed", "Halted", "Handover", "CEO Hold"].map(
+  (s) => ({ label: s, value: s })
+);
 
 interface ProjectsProps {
   customersView?: boolean; // To hide summary card
@@ -288,21 +293,9 @@ export const Projects: React.FC<ProjectsProps> = ({
   const { call } = useProjectStatusCountCall();
   const { data: all_projects_count } = useAllProjectsCount();
 
-  const statusOptions = useMemo(() => {
-    const options = ["WIP", "Completed", "Halted", "Handover"];
-    if (user_id === CEO_HOLD_AUTHORIZED_USER) {
-      options.push("CEO Hold");
-    }
-    return options.map((s) => ({
-      label: s,
-      value: s,
-    }));
-  }, [user_id]);
-  // Example static status options
-
   useEffect(() => {
     const fetchCounts = async () => {
-      const countsPromises = statusOptions.map((status) =>
+      const countsPromises = PROJECT_STATUS_OPTIONS.map((status) =>
         call({
           doctype: DOCTYPE,
           filters: { status: status.value },
