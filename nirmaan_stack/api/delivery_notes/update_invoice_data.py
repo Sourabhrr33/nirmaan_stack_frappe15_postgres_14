@@ -452,7 +452,10 @@ def _check_po_amount_overage(po_name: str, new_amount, exclude_invoice_id: Optio
     existing = float(rows[0].get("total") or 0) if rows else 0.0
 
     would_be_total = existing + new_amount_float
-    if would_be_total > po_total + 0.01:  # tolerate float fuzz
+    # Tolerate up to ₹10 of rounding drift (GST/freight rounding on real invoices
+    # commonly differ from PO totals by a few rupees). Tighter than this triggered
+    # spurious blocks on legitimate ₹0.10–₹5 deltas.
+    if would_be_total > po_total + 10:
         frappe.throw(
             f"Total invoiced amount would be ₹{would_be_total:,.2f}, which exceeds "
             f"the PO total of ₹{po_total:,.2f}. Already invoiced ₹{existing:,.2f}. "

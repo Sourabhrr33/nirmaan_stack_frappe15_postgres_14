@@ -581,7 +581,9 @@ export function InvoiceDialog<T extends DocumentType>({
     const current = parseNumber(invoiceData.amount) || 0;
     if (poTotal <= 0 || current <= 0) return null;
     const wouldBeTotal = existing + current;
-    const wouldExceed = wouldBeTotal > poTotal + 0.01;
+    // Tolerate up to ₹10 of rounding drift — must match the backend
+    // hard-block threshold in update_invoice_data._check_po_amount_overage.
+    const wouldExceed = wouldBeTotal > poTotal + 10;
     return {
       poTotal,
       existing,
@@ -703,24 +705,26 @@ export function InvoiceDialog<T extends DocumentType>({
               </div>
             )}
 
-            {/* Soft warning: supplier GSTIN mismatch */}
+            {/* Hard-block: supplier GSTIN mismatch */}
             {supplierGstinMismatch && (
-              <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-300 px-3 py-2">
-                <AlertTriangle className="h-4 w-4 text-amber-700 flex-shrink-0 mt-0.5" />
-                <div className="text-xs text-amber-900 leading-snug">
-                  <p className="font-medium">Supplier GSTIN mismatch.</p>
+              <div className="flex items-start gap-2 rounded-md bg-red-50 border border-red-300 px-3 py-2">
+                <XCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-red-900 leading-snug">
+                  <p className="font-medium">Supplier GSTIN mismatch — submit blocked.</p>
                   <p className="mt-0.5">{autofillValidation?.supplier_gstin?.message}</p>
+                  <p className="mt-0.5 italic">Re-upload the correct invoice or verify the vendor's GSTIN on file.</p>
                 </div>
               </div>
             )}
 
-            {/* Soft warning: receiver GSTIN mismatch */}
+            {/* Hard-block: receiver GSTIN mismatch */}
             {receiverGstinMismatch && (
-              <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-300 px-3 py-2">
-                <AlertTriangle className="h-4 w-4 text-amber-700 flex-shrink-0 mt-0.5" />
-                <div className="text-xs text-amber-900 leading-snug">
-                  <p className="font-medium">Receiver (Nirmaan) GSTIN mismatch.</p>
+              <div className="flex items-start gap-2 rounded-md bg-red-50 border border-red-300 px-3 py-2">
+                <XCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-red-900 leading-snug">
+                  <p className="font-medium">Receiver (Nirmaan) GSTIN mismatch — submit blocked.</p>
                   <p className="mt-0.5">{autofillValidation?.receiver_gstin?.message}</p>
+                  <p className="mt-0.5 italic">Re-upload the correct invoice or verify the PO's Project GST setup.</p>
                 </div>
               </div>
             )}
@@ -946,7 +950,9 @@ export function InvoiceDialog<T extends DocumentType>({
                     isLoading ||
                     validationState === "error" ||
                     validationState === "checking" ||
-                    !!liveAmountValidation?.wouldExceed
+                    !!liveAmountValidation?.wouldExceed ||
+                    supplierGstinMismatch ||
+                    receiverGstinMismatch
                   }
                 >
                   {isEditMode ? "Update Invoice" : "Add Invoice"}
