@@ -30,6 +30,8 @@ export const DEFAULT_VENDOR_INVOICE_FIELDS_TO_FETCH: (keyof VendorInvoice | 'nam
     "autofill_used",
     "autofill_extracted_amount",
     "autofill_all_entities_json",
+    "auto_approved",
+    "auto_approve_skip_reasons",
 ];
 
 /**

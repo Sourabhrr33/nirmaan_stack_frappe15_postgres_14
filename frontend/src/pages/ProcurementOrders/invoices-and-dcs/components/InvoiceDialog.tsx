@@ -116,6 +116,8 @@ export function InvoiceDialog<T extends DocumentType>({
     invoice_no?: string;
     invoice_date?: string;
     amount?: string;
+    supplier_gstin?: string;
+    receiver_gstin?: string;
   } | null>(null);
   const [autofillAllEntities, setAutofillAllEntities] = useState<
     Array<{ type: string; value: string; confidence: number }> | null
@@ -329,10 +331,14 @@ export function InvoiceDialog<T extends DocumentType>({
       }
       // Capture original AI-extracted values so we can persist them on submit
       // independently of any manual edits the user makes before submitting.
+      // Supplier + receiver GSTINs feed the auto-approve gates on the backend
+      // (compared to Vendors.vendor_gst and PO.project_gst respectively).
       setAutofillExtractedValues({
         invoice_no: extracted.invoice_no || "",
         invoice_date: extracted.invoice_date || "",
         amount: extracted.amount || "",
+        supplier_gstin: extracted.supplier_gstin || "",
+        receiver_gstin: extracted.receiver_gstin || "",
       });
       // Capture the FULL entity list so reviewers can later inspect everything
       // Document AI returned (supplier_name, supplier_gstin, total_tax_amount,
@@ -439,10 +445,18 @@ export function InvoiceDialog<T extends DocumentType>({
           autofillUsed ? (autofillExtractedValues?.invoice_date || null) : null,
         autofill_extracted_amount:
           autofillUsed ? (autofillExtractedValues?.amount || null) : null,
+        autofill_extracted_supplier_gstin:
+          autofillUsed ? (autofillExtractedValues?.supplier_gstin || null) : null,
+        autofill_extracted_receiver_gstin:
+          autofillUsed ? (autofillExtractedValues?.receiver_gstin || null) : null,
         autofill_all_entities_json:
           autofillUsed && autofillAllEntities && autofillAllEntities.length > 0
             ? JSON.stringify(autofillAllEntities)
             : null,
+        // Source file_url AI extracted from. Backend's auto-approve gate 13
+        // confirms the saved invoice_attachment maps to the same file (no swap
+        // between auto-fill and submit).
+        autofill_source_file_url: autofillUsed ? (uploadedFileUrl || null) : null,
       };
 
       const response = await updateInvoiceApiCall(apiPayload);
@@ -496,6 +510,7 @@ export function InvoiceDialog<T extends DocumentType>({
     autofillConfidence,
     autofillExtractedValues,
     autofillAllEntities,
+    uploadedFileUrl,
   ]);
 
   const handleSubmit = useCallback(() => {
